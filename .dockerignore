@@ -1,0 +1,32 @@
+# Python-specific files
+__pycache__/      # Compiled Python files (temporary files Python creates when running code)
+*.pyc             # Python compiled files
+*.pyo             # Python optimized compiled files
+*.pyd             # Python dynamic libraries
+.Python           # Python build artifact
+env/              # Virtual environment directory (comes from "environment")
+venv/             # Another common name for virtual environment
+.env              # Environment variables file (sensitive data)
+
+# Version control
+.git/             # Git repository data
+.gitignore        # Git ignore file
+.gitattributes    # Git attributes file
+
+# Development and IDE files
+.idea/            # PyCharm IDE files
+.vscode/          # Visual Studio Code files
+*.swp             # Vim temporary files
+*.swo             # Another Vim temporary file type
+*~                # Backup files
+
+# OS-specific files
+.DS_Store         # MacOS system file (comes from "Desktop Services Store")
+Thumbs.db         # Windows thumbnail cache file
+
+# Project-specific
+logs/             # Log files directory
+*.log             # Log files
+dist/             # Distribution directory
+build/            # Build directory
+*.egg-info/       # Python egg metadata
