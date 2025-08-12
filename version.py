@@ -6,5 +6,5 @@ This file follows semantic versioning (MAJOR.MINOR.PATCH):
 - PATCH version for backwards-compatible bug fixes
 """
 
-__version__ = "1.0.5"
+__version__ = "0.1.0"
 __version_info__ = tuple(map(int, __version__.split('.')))
