@@ -99,7 +99,11 @@ class EnergyEfficiencyPipeline(BasePipeline):
             system_prompt_with_id = self.system_prompt + f"\n\nFor this conversation turn, use this interactionId in your JSON response: {interaction_id}\n"
             
             # Prepare messages for LLM (no tools needed for energy efficiency)
-            messages = [{"role": "system", "content": system_prompt_with_id}]
+            # Include the user's message so the model has the actual question context.
+            messages = [
+                {"role": "system", "content": system_prompt_with_id},
+                {"role": "user", "content": message},
+            ]
             
             logger.info(
                 "Making LLM request",
@@ -116,6 +120,8 @@ class EnergyEfficiencyPipeline(BasePipeline):
                 max_tokens=self.model_config["settings"]["max_tokens"],
                 temperature=self.model_config["settings"]["temperature"],
                 top_p=self.model_config["settings"]["top_p"],
+                # Ask the model to return a strict JSON object (OpenAI-compatible parameter)
+                response_format={"type": "json_object"},
                 extra_body={"top_k": self.model_config["settings"]["top_k"]},
                 messages=messages,
                 # Note: No tools parameter - energy efficiency is purely conversational
