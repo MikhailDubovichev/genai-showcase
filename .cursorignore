@@ -31,6 +31,12 @@ infra/**
 !.cursor/.cursorrules
 !TASKS.md
 
+# Re-include a few edge reference files to mirror architecture/style when focusing on cloud
+!apps/edge-server/README.md
+!apps/edge-server/main.py
+!apps/edge-server/config/logging_config.py
+!apps/edge-server/monitoring/metrics.py
+
 # Optional: keep tests included to guide development
 # (Comment the next line if you want to exclude tests temporarily.)
 #!tests/**
