@@ -1,0 +1,43 @@
+[project]
+name = "ai-assistant-energy-2"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Mikhail Dubovichev",email = "mikhail.dubovichev@gmail.com"}
+]
+# NOTE: Monorepo context
+# Poetry resolves `project.readme` relative to this pyproject file and expects it to exist
+# within the project itself. Pointing outside the project (e.g., "../README.md") is not
+# supported during packaging/install. To keep packaging happy without changing repo layout,
+# we keep a small local README in `apps/edge-server/` and reference it here. The local
+# README can simply point to the root README for full docs.
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi (>=0.116.1,<0.117.0)",
+    "uvicorn (>=0.35.0,<0.36.0)",
+    "openai (>=1.99.1,<2.0.0)",
+    "requests (>=2.32.4,<3.0.0)",
+    "python-dotenv (>=0.19.0)",
+    "dateparser (>=1.2.2,<2.0.0)",
+    "prometheus-client (==0.19.0)",
+    "pydantic (>=2.5.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+# Disable package mode for this app in the monorepo. This tells Poetry to manage
+# dependencies and the virtual environment without attempting to install the app
+# itself as a package. Our code is run directly via `python main.py` and we do
+# not currently define an installable package/module layout here. This avoids
+# errors like "No file/folder found for package <name>" during `poetry install`.
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+pytest-cov = "^6.2.1"
+
