@@ -4,9 +4,9 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M1 — Monorepo and basics
 - [X] Create structure: `apps/edge-server/`, `apps/cloud-rag/`, `apps/gradio/`, `infra/compose/`
-- [ ] Move current repo into `apps/edge-server/` (no logic changes)
-- [ ] Add `.cursorignore` to limit context per app when working in Cursor
-- [ ] Update root `README.md` with monorepo map and how to run edge locally
+- [X] Move current repo into `apps/edge-server/` (no logic changes)
+- [X] Add `.cursorignore` to limit context per app when working in Cursor
+- [X] Update root `apps/edge-server/README.md` with monorepo map and how to run edge locally
 
 ## M2 — Cloud RAG MVP
 - [ ] Cloud FastAPI skeleton: `main.py`, `/health`, route mounting

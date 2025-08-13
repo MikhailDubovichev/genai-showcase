@@ -1,18 +1,17 @@
-# .cursorignore — Active focus: M1 (Monorepo restructure)
+# .cursorignore preset — CLOUD-RAG focus
 # -----------------------------------------------------------------------------
 # PURPOSE
-# We are currently on M1 (see TASKS.md): creating monorepo structure and moving
-# the existing edge-server code under `apps/edge-server/`. During M1 we want to
-# keep the current codebase visible, while excluding future cloud/gradio/infra
-# directories that may be created but are not yet under active development.
+# Use this when actively working on the cloud RAG service (milestones M2–M6).
+# It excludes edge-server, Gradio UIs, and infra files from Cursor's context to
+# reduce noise and keep the assistant focused on cloud development.
 # -----------------------------------------------------------------------------
 
-# Ignore future cloud/gradio/infra trees if/when they appear, to keep focus
-apps/cloud-rag/**
+# Focus on cloud-rag — ignore edge, gradio, and infra
+apps/edge-server/**
 apps/gradio/**
 infra/**
 
-# General heavy/noise files
+# General heavy/noise files and directories (keep context small and clean)
 **/__pycache__/**
 **/*.pyc
 **/*.pyo
@@ -20,14 +19,18 @@ infra/**
 **/*.log
 **/*.tmp
 **/*.bin
-.coverage
 
-# Large data/artifacts
+# Large artifacts
+**/*.sqlite
 **/faiss_index/**
 **/data/**
-**/*.sqlite
+.coverage
 
-# Keep key docs and rules in context
+# Re-include key documents and rules even if matched above
 !PRD.md
 !.cursor/.cursorrules
 !TASKS.md
+
+# Optional: keep tests included to guide development
+# (Comment the next line if you want to exclude tests temporarily.)
+#!tests/**
