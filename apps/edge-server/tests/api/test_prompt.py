@@ -79,9 +79,9 @@ def test_prompt_non_json_fallback(mock_orchestrator_cls):
 
     assert resp.status_code == 200
     body = resp.json()
-    # Note: api/prompt.py uses "interactionid" (lowercase d) in this fallback branch
+    # The fallback branch should use the same camelCase key as JSON responses
     assert body["message"] == "plain text response"
-    assert body["interactionid"] == "id-999"
+    assert body["interactionId"] == "id-999"
     assert body["type"] == "text"
 
 
@@ -115,7 +115,7 @@ def test_prompt_unexpected_exception_returns_500(mock_orchestrator_cls, mock_jso
     # Avoid resp.json() because we patched json.loads globally; assert on raw text instead
     text = resp.text
     assert '"type":"error"' in text
-    assert '"interactionid"' in text
+    assert '"interactionId"' in text
 
 
 @patch("api.prompt.archive_active_conversation")

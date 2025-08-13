@@ -104,7 +104,7 @@ async def handle_prompt(
         text_fallback_response = {
             "message": response_content,
             "type": "text",
-            "interactionid": interaction_id
+            "interactionId": interaction_id
         }
         return JSONResponse(text_fallback_response)
     except Exception as e:
@@ -113,7 +113,7 @@ async def handle_prompt(
         error_response = {
             "message": default_fallback_msg,
             "type": "error",
-            "interactionid": interaction_id
+            "interactionId": interaction_id
         }
         return JSONResponse(content=error_response, status_code=500)
 
