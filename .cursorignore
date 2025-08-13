@@ -1,0 +1,33 @@
+# .cursorignore — Active focus: M1 (Monorepo restructure)
+# -----------------------------------------------------------------------------
+# PURPOSE
+# We are currently on M1 (see TASKS.md): creating monorepo structure and moving
+# the existing edge-server code under `apps/edge-server/`. During M1 we want to
+# keep the current codebase visible, while excluding future cloud/gradio/infra
+# directories that may be created but are not yet under active development.
+# -----------------------------------------------------------------------------
+
+# Ignore future cloud/gradio/infra trees if/when they appear, to keep focus
+apps/cloud-rag/**
+apps/gradio/**
+infra/**
+
+# General heavy/noise files
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.log
+**/*.tmp
+**/*.bin
+.coverage
+
+# Large data/artifacts
+**/faiss_index/**
+**/data/**
+**/*.sqlite
+
+# Keep key docs and rules in context
+!PRD.md
+!.cursor/.cursorrules
+!TASKS.md

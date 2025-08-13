@@ -1,0 +1,67 @@
+# Cursor Workspace Rules for GenAI Showcase
+
+## Purpose
+- Follow the plan and task breakdown in `TASKS.md`. Develop strictly in order unless a task is blocked.
+- Minimize changes to existing code. Only touch code directly related to the current task.
+
+## Compatibility with existing technical stack
+- Web framework: Keep FastAPI on both edge and cloud. Do not change router paths already in use (`/api/prompt`, `/api/context`, feedback endpoints).
+- Metrics: Preserve Prometheus `/metrics` as mounted ASGI app on edge; mirror similar minimal setup on cloud later if needed.
+- LLM client: Use `llm_cloud.provider.get_client()` (OpenAI-compatible). Do not introduce a second client abstraction.
+- Pipelines: Maintain the `BasePipeline` contract and keep edits localized to `pipelines/energy_efficiency/pipeline_energy_efficiency.py` for cloud-RAG integration via feature flag.
+- Response schema: Keep `EnergyEfficiencyResponse` shape for energy answers. Any new responses must be JSON-parseable and validated by Pydantic before returning to clients.
+- Provider API: Keep `provider_api` mock interface stable. Tools should continue to use the injected provider client.
+- RAG (cloud): Use LangChain and FAISS. Store FAISS on disk (mounted volume). Do not introduce a proprietary vector DB in v0.
+- Evaluation/Observability: Use LangFuse for traces, scores, and datasets. No Evidently AI in v0. Persist feedback mirror in SQLite (public domain, free).
+- Privacy: Never send raw `user_email` to cloud. Use `user_hash` from `services.history_manager.get_user_hash`.
+- Config/feature flags: Add `features.energy_efficiency_rag_enabled` and `cloud_rag.base_url` in edge `config.json`. Default to fallback behavior if cloud is unavailable.
+
+## Development workflow
+- Follow `TASKS.md` and mark tasks done in PR descriptions. Keep PRs small and focused.
+- Add clear, verbose docstrings to every new function and file (per project convention). Follow PEP 8.
+- Tests: Run existing tests before/after changes. Add smoke tests for new endpoints. Avoid breaking current tests.
+- Lint/type: Keep code flake-compliant and type-safe where applicable. Prefer explicit types in public APIs.
+- Logging: Reuse existing logging helpers (e.g., `config.logging_config.get_logger`). Include `interactionId` in logs where relevant.
+- Error handling: Always return a valid JSON fallback on errors. Never raise unhandled exceptions to the client.
+- Performance: Target p95 ≤ 2.5s for cloud RAG locally. Use short timeouts for HTTP calls from edge to cloud.
+
+## Cursor usage tips
+- Use `.cursorignore` (to be added) to exclude `apps/cloud-rag/` when working on edge and vice versa.
+- When editing large files, prefer narrow, localized edits and keep indentation style unchanged.
+- Cite code using path snippets when discussing changes; do not paste entire files.
+
+## Acceptance alignment
+- Ensure each milestone’s acceptance criteria in `PRD.md` are satisfied before moving on.
+- For the cloud `/api/rag/answer` endpoint, log minimal LangFuse fields: `latency_ms`, `model`, `tokens_prompt`, `tokens_completion`, `json_valid`, `retrieved_k`, optional `error_type`.
+- After daily feedback sync, attach `user_feedback` score (+1/-1) to the LangFuse trace by `interactionId`.
+
+## Linkage
+- Develop in accordance with the tasks defined in `TASKS.md`. If tasks need reprioritization, update `TASKS.md` first, then proceed.
+
+# Coding Rules - Very Important
+
+## 1) NEVER do
+- NEVER modify `llm_cloud/provider.py` (Nebius/OpenAI client) unless explicitly requested. If a task requires changes there, notify the user first.
+- NEVER delete comments from the codebase. Comments are intentionally verbose and part of documentation quality.
+
+## 2) ALWAYS do
+- ALWAYS check for consistency across modules. If similar files use different patterns (docstrings vs none, logger vs print, DI vs in-file instantiation), raise it and propose alignment.
+- When adding/editing files, mirror structure, patterns, and verbosity used by sibling files in the same module. Propose improvements, but do not change established patterns without approval.
+- Use domain-specific, precise names. Avoid generic or misleading identifiers.
+
+## 3) Development best practices
+- Modular architecture with clear API boundaries; separate infrastructure (clients, DB connectors) from domain logic (classification/orchestration/pipelines).
+- Naming conventions: Classes CamelCase; functions/variables snake_case.
+- Add logging at critical steps (input parsing, external API calls, errors).
+- Prefer simple solutions; avoid heavy frameworks unless justified with clear benefits.
+- Keep directory structure shallow to reduce cognitive load.
+- Follow Single Responsibility Principle for modules/classes/functions.
+- Ensure structured JSON outputs from LLMs and validate via Pydantic before returning.
+- Design for extensibility without refactors; keep separation of concerns clear.
+
+## 4) System prompt editing guidelines
+- When editing system prompt files (e.g., `config/*system_prompt*.txt`):
+  1. Limit lines to ≤ 150 characters.
+  2. Break lines at logical boundaries (after punctuation/before conjunctions).
+  3. Preserve formatting of JSON examples and code blocks.
+  4. Maintain overall structure and readability.

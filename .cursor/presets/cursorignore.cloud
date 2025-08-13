@@ -1,0 +1,41 @@
+# .cursorignore preset — CLOUD-RAG focus
+# -----------------------------------------------------------------------------
+# PURPOSE
+# Use this preset when you are actively working on the cloud RAG service.
+# It excludes edge-server, Gradio UIs, and infra files from Cursor's context to
+# reduce noise and keep the assistant focused on cloud development. Copy or
+# symlink this file to repo-root `.cursorignore` when focusing on cloud tasks.
+#
+# IMPORTANT: Cursor only reads the root-level `.cursorignore`. Files under
+# `.cursor/presets/` are templates only; they have no effect until copied to
+# the root as `.cursorignore`.
+# -----------------------------------------------------------------------------
+
+# Focus on cloud-rag — ignore edge, gradio, and infra
+apps/edge-server/**
+apps/gradio/**
+infra/**
+
+# General heavy/noise files and directories (keep context small and clean)
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.log
+**/*.tmp
+**/*.bin
+
+# Large artifacts
+**/*.sqlite
+**/faiss_index/**
+**/data/**
+.coverage
+
+# Re-include key documents and rules even if matched above
+!PRD.md
+!.cursor/.cursorrules
+!TASKS.md
+
+# Optional: keep tests included to guide development
+# (Comment the next line if you want to exclude tests temporarily.)
+#!tests/**
