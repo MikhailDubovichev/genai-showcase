@@ -11,7 +11,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M2 — Cloud RAG MVP
 - [X] Cloud FastAPI skeleton: `main.py`, `/health`, route mounting
 - [X] Config/env loader for `LANGFUSE_*` and service port
-- [ ] Response schema file mirroring `EnergyEfficiencyResponse`
+- [X] Response schema file mirroring `EnergyEfficiencyResponse`
 - [ ] Prompts: `prompts/answer_system.txt` (strict JSON)
 - [ ] Chain: `rag/chain.py` (embedder + FAISS retriever + prompt + LLM + validator)
 - [ ] Seed: `rag/data/seed/` snippets + `scripts/seed_index.py` → persist to `faiss_index/`
