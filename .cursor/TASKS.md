@@ -13,7 +13,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Config/env loader for `LANGFUSE_*` and service port
 - [X] Response schema file mirroring `EnergyEfficiencyResponse`
 - [X] Prompts: `prompts/answer_system.txt` (strict JSON)
-- [ ] Chain: `rag/chain.py` (embedder + FAISS retriever + prompt + LLM + validator)
+- [X] Chain: `rag/chain.py` (embedder + FAISS retriever + prompt + LLM + validator)
 - [ ] Seed: `rag/data/seed/` snippets + `scripts/seed_index.py` → persist to `faiss_index/`
 - [ ] Endpoint: `POST /api/rag/answer` returns validated JSON
 
