@@ -1,0 +1,115 @@
+"""
+Configuration module for the Cloud RAG service (environment loader and runtime config).
+
+This module centralizes how the Cloud RAG app reads configuration from the process environment
+and exposes a simple, dictionary‑like structure that the rest of the application can depend on.
+The goal for this milestone is intentionally narrow: detect optional Langfuse credentials for
+observability and define server host/port with a small, explicit schema. We avoid any third‑party
+libraries such as python‑dotenv to keep the footprint minimal, assuming that environments like
+Docker Compose or deployment platforms will inject variables directly.
+
+Two top‑level objects are exported:
+- ENV: a mapping of raw environment variables relevant to this app. The values are read once at
+  import time to make behavior deterministic and easy to reason about within a single process.
+- CONFIG: a higher‑level mapping that expresses structured configuration for the server and
+  integrations. The CONFIG object is what application code should prefer to read for runtime
+  parameters, such as which TCP port to bind. Defaults are chosen to support local development
+  without any extra setup.
+
+In addition, we provide a small helper function, langfuse_present(), which indicates whether both
+required Langfuse credentials are available. This allows later code paths to conditionally enable
+Langfuse without scattering environment checks throughout the codebase. The philosophy mirrors the
+edge server pattern: a single import site provides a consistent configuration surface that callers
+can rely upon, improving separation of concerns and testability.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Dict, Mapping
+
+
+def _read_env() -> Dict[str, str]:
+    """
+    Read process environment variables relevant to the Cloud RAG app.
+
+    This function extracts only the keys we care about for this milestone and provides
+    well‑defined defaults. Reading once during module import ensures that configuration
+    remains stable during the lifetime of the process, which makes it easier to reason
+    about behavior and aligns with common Twelve‑Factor App practices.
+
+    Returns:
+        Dict[str, str]: A dictionary containing keys for Langfuse integration and any
+        other environment‑scoped values needed by the application. Missing variables
+        are replaced with safe defaults that enable local development out of the box.
+    """
+    return {
+        "LANGFUSE_PUBLIC_KEY": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+        "LANGFUSE_SECRET_KEY": os.environ.get("LANGFUSE_SECRET_KEY", ""),
+        "LANGFUSE_HOST": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        # Server port is read separately in CONFIG to ensure integer conversion and defaults
+        "CLOUD_RAG_PORT": os.environ.get("CLOUD_RAG_PORT", "8000"),
+    }
+
+
+ENV: Mapping[str, str] = _read_env()
+
+
+def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
+    """
+    Construct the high‑level CONFIG object consumed by the application.
+
+    This function translates raw environment values into a structured configuration mapping
+    that the service can use at runtime. It enforces simple type conversions (such as turning
+    the port into an integer) and organizes related settings into nested dictionaries. The
+    shape mirrors the edge server style and is intentionally conservative so it can be evolved
+    safely as the Cloud service grows more features in later milestones.
+
+    Args:
+        env (Mapping[str, str]): The raw environment variables previously captured in ENV.
+
+    Returns:
+        Dict[str, object]: A dictionary with at least two top‑level keys: "server" for host/port
+        and "langfuse" for integration credentials and endpoint. Callers should prefer this object
+        over reading os.environ directly to keep configuration logic in one place.
+    """
+    port_str = env.get("CLOUD_RAG_PORT", "8000")
+    try:
+        port_val = int(port_str)
+    except ValueError:
+        port_val = 8000
+
+    return {
+        "server": {
+            "host": "0.0.0.0",
+            "port": port_val,
+        },
+        "langfuse": {
+            "public_key": env.get("LANGFUSE_PUBLIC_KEY", ""),
+            "secret_key": env.get("LANGFUSE_SECRET_KEY", ""),
+            "host": env.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        },
+    }
+
+
+CONFIG: Dict[str, object] = _build_config(ENV)
+
+
+def langfuse_present() -> bool:
+    """
+    Determine whether Langfuse credentials are available in the environment.
+
+    This helper centralizes the presence check for Langfuse configuration so that the rest of the
+    application can make a simple boolean decision about enabling Langfuse. It requires both the
+    public and secret keys to be non‑empty, which prevents partially configured states from
+    attempting to initialize integrations that would fail at runtime. While unused in this milestone,
+    it provides a clean extension point for subsequent work where RAG traces and metrics may be
+    recorded via Langfuse when credentials are supplied.
+
+    Returns:
+        bool: True if both LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are present and non‑empty;
+        otherwise False.
+    """
+    return bool(ENV.get("LANGFUSE_PUBLIC_KEY") and ENV.get("LANGFUSE_SECRET_KEY"))
+
+

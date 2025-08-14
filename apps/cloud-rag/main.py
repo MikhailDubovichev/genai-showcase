@@ -47,6 +47,7 @@ if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
 from api.health import router as health_router  # noqa: E402  (import after sys.path adjustment)
+from config import CONFIG  # noqa: E402
 
 
 logger = logging.getLogger(__name__)
@@ -113,8 +114,10 @@ if __name__ == "__main__":
     try:
         import uvicorn
 
-        logger.info("Starting Cloud RAG service on http://0.0.0.0:8000 …")
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        host = str(CONFIG["server"]["host"])  # type: ignore[index]
+        port = int(CONFIG["server"]["port"])  # type: ignore[index]
+        logger.info("Starting Cloud RAG service on http://%s:%s …", host, port)
+        uvicorn.run(app, host=host, port=port)
     except Exception as exc:  # pragma: no cover - defensive entrypoint guard
         logger.error("Failed to start Cloud RAG service: %s", exc)
         raise

@@ -9,8 +9,8 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Update root `apps/edge-server/README.md` with monorepo map and how to run edge locally
 
 ## M2 — Cloud RAG MVP
-- [ ] Cloud FastAPI skeleton: `main.py`, `/health`, route mounting
-- [ ] Config/env loader for `LANGFUSE_*` and service port
+- [X] Cloud FastAPI skeleton: `main.py`, `/health`, route mounting
+- [X] Config/env loader for `LANGFUSE_*` and service port
 - [ ] Response schema file mirroring `EnergyEfficiencyResponse`
 - [ ] Prompts: `prompts/answer_system.txt` (strict JSON)
 - [ ] Chain: `rag/chain.py` (embedder + FAISS retriever + prompt + LLM + validator)
