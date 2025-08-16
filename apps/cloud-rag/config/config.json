@@ -1,0 +1,15 @@
+{
+  "llm": {
+    "base_url": "https://api.studio.nebius.ai/v1",
+    "timeout": 30
+  },
+  "embeddings": {
+    "name": "BAAI/bge-en-icl"
+  },
+  "paths": {
+    "faiss_index_dir": "apps/cloud-rag/faiss_index",
+    "seed_data_dir": "apps/cloud-rag/rag/data/seed"
+  }
+}
+
+

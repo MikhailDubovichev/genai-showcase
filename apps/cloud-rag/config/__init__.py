@@ -26,6 +26,8 @@ can rely upon, improving separation of concerns and testability.
 from __future__ import annotations
 
 import os
+import json
+from pathlib import Path
 from typing import Dict, Mapping
 
 
@@ -49,10 +51,36 @@ def _read_env() -> Dict[str, str]:
         "LANGFUSE_HOST": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
         # Server port is read separately in CONFIG to ensure integer conversion and defaults
         "CLOUD_RAG_PORT": os.environ.get("CLOUD_RAG_PORT", "8000"),
+        # Nebius embeddings/API credentials
+        "NEBIUS_API_KEY": os.environ.get("NEBIUS_API_KEY", ""),
     }
 
 
 ENV: Mapping[str, str] = _read_env()
+
+
+def _load_json_config() -> Dict[str, object]:
+    """
+    Load optional JSON configuration from the app's config directory.
+
+    This function attempts to read `config.json` that lives alongside this module. The JSON file
+    provides overrides and additional structured settings such as LLM base URL, embeddings model
+    name, and well-known paths used by scripts and services. Failure to read the file (missing,
+    malformed, or permission-related issues) results in an empty mapping so that sane defaults
+    remain in effect for local development.
+
+    Returns:
+        Dict[str, object]: The parsed JSON mapping or an empty dictionary if the file is absent or
+        unreadable.
+    """
+    cfg_path = Path(__file__).parent / "config.json"
+    try:
+        if cfg_path.exists():
+            return json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        # Intentionally ignore and fall back to defaults
+        pass
+    return {}
 
 
 def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
@@ -79,7 +107,8 @@ def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
     except ValueError:
         port_val = 8000
 
-    return {
+    # Base defaults
+    cfg: Dict[str, object] = {
         "server": {
             "host": "0.0.0.0",
             "port": port_val,
@@ -89,7 +118,53 @@ def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
             "secret_key": env.get("LANGFUSE_SECRET_KEY", ""),
             "host": env.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
         },
+        "llm": {
+            "base_url": "https://api.studio.nebius.ai/v1",
+            "timeout": 30,
+        },
+        "embeddings": {
+            "name": "BAAI/bge-en-icl",
+        },
+        "paths": {
+            "faiss_index_dir": "apps/cloud-rag/faiss_index",
+            "seed_data_dir": "apps/cloud-rag/rag/data/seed",
+        },
     }
+
+    # Overlay JSON config if present
+    json_cfg = _load_json_config()
+    if isinstance(json_cfg, dict):
+        llm_cfg = json_cfg.get("llm", {})
+        if isinstance(llm_cfg, dict):
+            cfg_llm = cfg.get("llm", {})  # type: ignore[assignment]
+            if isinstance(cfg_llm, dict):
+                if "base_url" in llm_cfg:
+                    cfg_llm["base_url"] = str(llm_cfg.get("base_url"))
+                if "timeout" in llm_cfg:
+                    try:
+                        cfg_llm["timeout"] = int(llm_cfg.get("timeout"))
+                    except Exception:
+                        pass
+                cfg["llm"] = cfg_llm
+
+        emb_cfg = json_cfg.get("embeddings", {})
+        if isinstance(emb_cfg, dict):
+            cfg_emb = cfg.get("embeddings", {})  # type: ignore[assignment]
+            if isinstance(cfg_emb, dict) and "name" in emb_cfg:
+                cfg_emb["name"] = str(emb_cfg.get("name"))
+                cfg["embeddings"] = cfg_emb
+
+        paths_cfg = json_cfg.get("paths", {})
+        if isinstance(paths_cfg, dict):
+            cfg_paths = cfg.get("paths", {})  # type: ignore[assignment]
+            if isinstance(cfg_paths, dict):
+                if "faiss_index_dir" in paths_cfg:
+                    cfg_paths["faiss_index_dir"] = str(paths_cfg.get("faiss_index_dir"))
+                if "seed_data_dir" in paths_cfg:
+                    cfg_paths["seed_data_dir"] = str(paths_cfg.get("seed_data_dir"))
+                cfg["paths"] = cfg_paths
+
+    return cfg
 
 
 CONFIG: Dict[str, object] = _build_config(ENV)
