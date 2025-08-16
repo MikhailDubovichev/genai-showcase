@@ -37,6 +37,13 @@ infra/**
 !apps/edge-server/config/logging_config.py
 !apps/edge-server/monitoring/metrics.py
 
+# Additional edge reference bundle to better mimic style and contracts
+!apps/edge-server/shared/models.py
+!apps/edge-server/shared/utils.py
+!apps/edge-server/pipelines/base.py
+!apps/edge-server/core/orchestrator.py
+!apps/edge-server/core/classifier.py
+
 # Optional: keep tests included to guide development
 # (Comment the next line if you want to exclude tests temporarily.)
 #!tests/**
