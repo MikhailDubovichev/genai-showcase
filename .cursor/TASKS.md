@@ -15,7 +15,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Prompts: `prompts/answer_system.txt` (strict JSON)
 - [X] Chain: `rag/chain.py` (embedder + FAISS retriever + prompt + LLM + validator)
 - [X] Seed: `rag/data/seed/` snippets + `scripts/seed_index.py` → persist to `faiss_index/`
-- [ ] Endpoint: `POST /api/rag/answer` returns validated JSON
+- [X] Endpoint: `POST /api/rag/answer` returns validated JSON
 
 ## M3 — LangFuse (cloud-only minimal)
 - [ ] Initialize LangFuse client from env at startup
