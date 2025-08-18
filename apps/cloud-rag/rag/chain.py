@@ -21,13 +21,15 @@ Design goals:
 from __future__ import annotations
 
 import json
+import re
 import logging
 from pathlib import Path
 from typing import Any, Dict
 
 from pydantic import ValidationError
+import json as _json
 
-from ..schemas.energy_efficiency import EnergyEfficiencyResponse
+from schemas.energy_efficiency import EnergyEfficiencyResponse
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,24 @@ def build_retriever(faiss_dir: str, embeddings) -> BaseRetriever:
     if FAISS is None:  # pragma: no cover - defensive guard
         raise ImportError("LangChain FAISS not available; install langchain_community to proceed.")
 
+    # Validate manifest if present to catch embedding/shape mismatches early
+    manifest_path = index_path / "manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+            # Try to compute current embedding dimension and compare
+            try:
+                current_dim = len(embeddings.embed_query("probe"))
+            except Exception:
+                current_dim = len(embeddings.embed_query("test"))
+            if int(manifest.get("dimension", current_dim)) != int(current_dim):
+                raise RuntimeError(
+                    "FAISS index embedding dimension mismatch. Reseed the index with the current embeddings."
+                )
+        except Exception:
+            # Non-fatal: proceed, FAISS will still attempt to load
+            pass
+
     try:
         # Newer LangChain uses allow_dangerous_deserialization flag for safe loading.
         vectorstore = FAISS.load_local(
@@ -141,6 +161,26 @@ def _format_context_items(docs: Any) -> str:
         chunk = getattr(doc, "page_content", "")
         items.append({"sourceId": str(source_id), "chunk": str(chunk), "score": float(score)})
     return json.dumps(items, ensure_ascii=False)
+
+
+def _sanitize_json_text(text: str) -> str:
+    """
+    Remove common wrappers like Markdown code fences and trim to the first JSON object.
+
+    This helper makes best-effort normalization when models wrap JSON inside
+    ```json ... ``` blocks or prepend/append prose. It does not aim to be
+    perfect, only to increase the chance of a successful json.loads call.
+    """
+    t = text.strip()
+    # Strip fenced blocks ```json ... ``` or ``` ... ```
+    fence = re.compile(r"^```[a-zA-Z]*\n|\n```$", re.MULTILINE)
+    t = fence.sub("\n", t)
+    # Trim to the outermost braces if present
+    start = t.find("{")
+    end = t.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return t[start : end + 1]
+    return t
 
 
 def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
@@ -175,7 +215,8 @@ def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
         # Adjust retriever k at runtime and retrieve documents
         if hasattr(retriever, "search_kwargs"):
             retriever.search_kwargs["k"] = top_k  # type: ignore[attr-defined]
-        docs = retriever.get_relevant_documents(question)
+        # Use LangChain's unified Runnable API (invoke) for retrieval
+        docs = retriever.invoke(question)
 
         # Prepare context JSON for the prompt
         context_json = _format_context_items(docs)
@@ -186,18 +227,61 @@ def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
             .replace("{{CONTEXT}}", context_json)
             .replace("{{INTERACTION_ID}}", interaction_id)
             .replace("{{TOP_K}}", str(top_k))
+            .replace("{{QUESTION}}", question)
         )
 
-        raw = llm.invoke(rendered)
+        # Prefer chat-style invocation with explicit system+user messages to improve compliance
+        messages = [
+            {"role": "system", "content": rendered},
+            {"role": "user", "content": "Return ONLY one valid JSON object matching the schema."},
+        ]
+        # Try structured outputs first if supported by the provider/LangChain
+        try:
+            with_structured = getattr(llm, "with_structured_output", None)
+            if callable(with_structured):
+                structured_llm = with_structured(EnergyEfficiencyResponse)  # type: ignore[arg-type]
+                result_obj = structured_llm.invoke(messages)
+                # Accept both pydantic model or plain dict
+                if hasattr(result_obj, "model_dump_json"):
+                    return result_obj.model_dump_json()  # type: ignore[no-any-return]
+                if isinstance(result_obj, dict):
+                    return EnergyEfficiencyResponse(**result_obj).model_dump_json()
+        except Exception:
+            # Fall back to plain text path
+            pass
+
+        raw = llm.invoke(messages)
         text = getattr(raw, "content", raw)
         if not isinstance(text, str):
             text = str(text)
 
         try:
-            data = json.loads(text)
+            data = json.loads(_sanitize_json_text(text))
         except json.JSONDecodeError as e:
+            # One cheap retry with an explicit JSON-only reminder
             logger.error("Model output was not valid JSON: %s", e)
-            raise ValueError("Model output was not valid JSON") from e
+            retry_messages = [
+                {"role": "system", "content": rendered},
+                {"role": "user", "content": "Return ONLY one valid JSON object that matches the schema. No extra text."},
+            ]
+            raw_retry = llm.invoke(retry_messages)
+            text_retry = getattr(raw_retry, "content", raw_retry)
+            if not isinstance(text_retry, str):
+                text_retry = str(text_retry)
+            try:
+                data = json.loads(_sanitize_json_text(text_retry))
+            except json.JSONDecodeError as e2:
+                # Final fallback: try to extract the first balanced JSON object substring
+                try:
+                    start = text_retry.find("{")
+                    end = text_retry.rfind("}")
+                    if start != -1 and end != -1 and end > start:
+                        candidate = text_retry[start : end + 1]
+                        data = json.loads(candidate)
+                    else:
+                        raise ValueError("Model output was not valid JSON") from e2
+                except Exception as e3:  # pragma: no cover - last resort path
+                    raise ValueError("Model output was not valid JSON") from e3
 
         try:
             validated = EnergyEfficiencyResponse(**data)

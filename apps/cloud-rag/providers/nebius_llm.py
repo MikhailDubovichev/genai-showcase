@@ -51,7 +51,10 @@ def get_llm() -> Any:
         package is not installed in the environment.
     """
     nebius_api_key = ENV.get("NEBIUS_API_KEY", "")  # type: ignore[assignment]
-    model = (CONFIG.get("llm", {}) or {}).get("model", "Qwen/Qwen3-30B-A3B-fast")  # type: ignore[assignment]
+    llm_cfg = (CONFIG.get("llm", {}) or {})
+    model = llm_cfg.get("model", "Qwen/Qwen3-30B-A3B-fast")  # type: ignore[assignment]
+    temperature = float(llm_cfg.get("temperature", 0.0))
+    top_p = float(llm_cfg.get("top_p", 0.95))
 
     if not nebius_api_key:
         raise RuntimeError(
@@ -71,6 +74,8 @@ def get_llm() -> Any:
         _os.environ["NEBIUS_API_KEY"] = nebius_api_key
 
     logger.info("Initializing Nebius Chat model: %s", model)
-    return ChatNebius(model=model, temperature=0.2, top_p=0.95)
+    # Keep instantiation minimal for maximum provider compatibility.
+    # Some backends may not support OpenAI's `response_format` and can error.
+    return ChatNebius(model=model, temperature=temperature, top_p=top_p)
 
 

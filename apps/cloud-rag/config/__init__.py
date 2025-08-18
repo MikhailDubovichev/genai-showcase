@@ -23,6 +23,9 @@ edge server pattern: a single import site provides a consistent configuration su
 can rely upon, improving separation of concerns and testability.
 """
 
+# TODO: I want to refactor this file and keep all the variables but API keys in config.json. So config variables (besides
+# API keys) should be read from config.json.
+
 from __future__ import annotations
 
 import os

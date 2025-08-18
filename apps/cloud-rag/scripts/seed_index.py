@@ -31,7 +31,9 @@ import os
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-from apps.cloud_rag.providers.embeddings import get_embeddings
+from providers.embeddings import get_embeddings
+import json
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -112,12 +114,17 @@ def _build_documents(
         Document: A LangChain Document with `page_content` set to a chunk and metadata including
         `sourceId` and default `score` (0.0 during seeding; retriever will supply scores at query time).
     """
+    # Newer LangChain exposes Document under langchain_core; keep a fallback for older layouts.
     try:
-        from langchain.schema import Document  # type: ignore
-    except Exception as exc:  # pragma: no cover - dependency not installed
-        raise RuntimeError(
-            "Missing langchain dependency. Install it via: pip install langchain"
-        ) from exc
+        from langchain_core.documents import Document  # type: ignore
+    except Exception:
+        try:
+            from langchain.schema import Document  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency not installed
+            raise RuntimeError(
+                "Missing LangChain dependency. Install it via: "
+                "poetry add langchain langchain-community"
+            ) from exc
 
     for path_str, text in pairs:
         stem = Path(path_str).stem
@@ -159,6 +166,13 @@ def seed_index(
     embeddings = get_embeddings()
     logger.info("Using embeddings provider: Nebius (model from CONFIG)")
 
+    # Determine embedding dimension for manifest
+    try:
+        dim = len(embeddings.embed_query("probe"))
+    except Exception:
+        # Fallback probe text
+        dim = len(embeddings.embed_query("test"))
+
     try:
         from langchain_community.vectorstores import FAISS  # type: ignore
     except Exception as exc:  # pragma: no cover
@@ -175,6 +189,24 @@ def seed_index(
 
     logger.info("Saved FAISS index to %s", index_dir)
 
+    # Write a manifest with embedding metadata to assist validation at load time
+    manifest = {
+        "model": os.environ.get("EMBEDDINGS_MODEL") or "",
+        "config_model": (os.environ.get("EMBEDDINGS_MODEL") or ""),
+        "dimension": dim,
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "seeded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # If available, prefer configured model name from CONFIG
+    try:
+        from config import CONFIG  # type: ignore
+        manifest["config_model"] = (CONFIG.get("embeddings", {}) or {}).get("name", "")
+    except Exception:
+        pass
+    (index_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    logger.info("Wrote FAISS manifest to %s", index_dir / "manifest.json")
+
 
 def main() -> None:
     """
@@ -188,13 +220,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Seed FAISS index for Cloud RAG")
     parser.add_argument(
         "--data-dir",
-        default="apps/cloud-rag/rag/data/seed",
-        help="Directory containing .txt/.md snippets",
+        default="rag/data/seed",
+        help="Directory containing .txt/.md snippets (default: rag/data/seed)",
     )
     parser.add_argument(
         "--index-dir",
-        default="apps/cloud-rag/faiss_index",
-        help="Directory to write FAISS index",
+        default="faiss_index",
+        help="Directory to write FAISS index (default: faiss_index)",
     )
     parser.add_argument("--chunk-size", type=int, default=1000, help="Chunk size (characters)")
     parser.add_argument("--chunk-overlap", type=int, default=150, help="Overlap (characters)")
@@ -207,8 +239,18 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    data_dir = Path(args.data_dir)
-    index_dir = Path(args.index_dir)
+    # Resolve paths relative to the cloud app root for robust execution via `-m`.
+    app_root = Path(__file__).resolve().parents[1]
+    data_dir = (app_root / args.data_dir).resolve()
+    index_dir = (app_root / args.index_dir).resolve()
+
+    if not data_dir.exists():
+        logger.info("Seed directory %s does not exist. Creating it.", data_dir)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            "Place one or more .txt/.md files under %s and rerun seeding.", data_dir
+        )
+        # Continue execution; _read_text_files will simply find zero files and report.
 
     seed_index(
         data_dir=data_dir,

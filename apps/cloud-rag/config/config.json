@@ -1,14 +1,22 @@
 {
   "llm": {
     "base_url": "https://api.studio.nebius.ai/v1",
-    "timeout": 30
+    "timeout": 30,
+    "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "temperature": 0.0,
+    "top_p": 0.95
   },
   "embeddings": {
-    "name": "BAAI/bge-en-icl"
+    "name": "Qwen/Qwen3-Embedding-8B"
   },
   "paths": {
-    "faiss_index_dir": "apps/cloud-rag/faiss_index",
-    "seed_data_dir": "apps/cloud-rag/rag/data/seed"
+    "faiss_index_dir": "faiss_index",
+    "seed_data_dir": "rag/data/seed"
+  },
+  "retrieval": {
+    "default_top_k": 3,
+    "chunk_size": 1000,
+    "chunk_overlap": 150
   }
 }
 
