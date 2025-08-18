@@ -165,17 +165,12 @@ def _format_context_items(docs: Any) -> str:
 
 def _sanitize_json_text(text: str) -> str:
     """
-    Remove common wrappers like Markdown code fences and trim to the first JSON object.
-
-    This helper makes best-effort normalization when models wrap JSON inside
-    ```json ... ``` blocks or prepend/append prose. It does not aim to be
-    perfect, only to increase the chance of a successful json.loads call.
+    Best-effort sanitizer: remove code fences and trim to the first JSON object.
+    Keeps the chain lean while handling common formatting wrappers from chat models.
     """
     t = text.strip()
-    # Strip fenced blocks ```json ... ``` or ``` ... ```
     fence = re.compile(r"^```[a-zA-Z]*\n|\n```$", re.MULTILINE)
     t = fence.sub("\n", t)
-    # Trim to the outermost braces if present
     start = t.find("{")
     end = t.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -235,21 +230,6 @@ def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
             {"role": "system", "content": rendered},
             {"role": "user", "content": "Return ONLY one valid JSON object matching the schema."},
         ]
-        # Try structured outputs first if supported by the provider/LangChain
-        try:
-            with_structured = getattr(llm, "with_structured_output", None)
-            if callable(with_structured):
-                structured_llm = with_structured(EnergyEfficiencyResponse)  # type: ignore[arg-type]
-                result_obj = structured_llm.invoke(messages)
-                # Accept both pydantic model or plain dict
-                if hasattr(result_obj, "model_dump_json"):
-                    return result_obj.model_dump_json()  # type: ignore[no-any-return]
-                if isinstance(result_obj, dict):
-                    return EnergyEfficiencyResponse(**result_obj).model_dump_json()
-        except Exception:
-            # Fall back to plain text path
-            pass
-
         raw = llm.invoke(messages)
         text = getattr(raw, "content", raw)
         if not isinstance(text, str):
@@ -271,17 +251,17 @@ def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
             try:
                 data = json.loads(_sanitize_json_text(text_retry))
             except json.JSONDecodeError as e2:
-                # Final fallback: try to extract the first balanced JSON object substring
-                try:
-                    start = text_retry.find("{")
-                    end = text_retry.rfind("}")
-                    if start != -1 and end != -1 and end > start:
-                        candidate = text_retry[start : end + 1]
+                # Final minimal fallback: attempt balanced braces extraction
+                start = text_retry.find("{")
+                end = text_retry.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    candidate = text_retry[start : end + 1]
+                    try:
                         data = json.loads(candidate)
-                    else:
-                        raise ValueError("Model output was not valid JSON") from e2
-                except Exception as e3:  # pragma: no cover - last resort path
-                    raise ValueError("Model output was not valid JSON") from e3
+                    except Exception as e3:
+                        raise ValueError("Model output was not valid JSON") from e3
+                else:
+                    raise ValueError("Model output was not valid JSON") from e2
 
         try:
             validated = EnergyEfficiencyResponse(**data)
