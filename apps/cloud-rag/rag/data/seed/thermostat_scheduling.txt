@@ -1,0 +1,4 @@
+Set programmable schedules:
+- Winter: 20–21°C when home/awake; 17–18°C when sleeping/away.
+- Summer: 24–26°C when home/awake; increase when away.
+Each 1°C of setback can save roughly 3–5% on heating/cooling.

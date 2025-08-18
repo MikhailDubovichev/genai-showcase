@@ -91,7 +91,7 @@ def load_system_prompt(prompt_path: str) -> str:
     return content
 
 
-def build_retriever(faiss_dir: str, embeddings) -> BaseRetriever:
+def build_retriever(faiss_dir: str, embeddings) -> tuple[BaseRetriever, Any]:
     """
     Build a FAISS retriever from an on‑disk index using the supplied embeddings model.
 
@@ -147,19 +147,24 @@ def build_retriever(faiss_dir: str, embeddings) -> BaseRetriever:
         vectorstore = FAISS.load_local(str(index_path), embeddings)
 
     retriever: BaseRetriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-    return retriever
+    return retriever, vectorstore
 
 
 def _format_context_items(docs: Any) -> str:
     """Render retrieved documents into a compact JSON list for the prompt."""
     items = []
-    for idx, doc in enumerate(docs):
-        # Extract minimal fields with safe fallbacks
+    for idx, entry in enumerate(docs):
+        # Support both (Document, score) tuples and bare Documents
+        if isinstance(entry, tuple) and len(entry) == 2:
+            doc, doc_score = entry
+            score_val = float(doc_score) if doc_score is not None else 0.0
+        else:
+            doc = entry
+            score_val = 0.0
         metadata = getattr(doc, "metadata", {}) or {}
         source_id = metadata.get("sourceId") or metadata.get("source", f"source_{idx}")
-        score = metadata.get("score", 0.0)
         chunk = getattr(doc, "page_content", "")
-        items.append({"sourceId": str(source_id), "chunk": str(chunk), "score": float(score)})
+        items.append({"sourceId": str(source_id), "chunk": str(chunk), "score": score_val})
     return json.dumps(items, ensure_ascii=False)
 
 
@@ -178,7 +183,7 @@ def _sanitize_json_text(text: str) -> str:
     return t
 
 
-def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
+def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: str) -> Runnable:
     """
     Construct a Runnable that executes the full RAG flow and returns validated JSON.
 
@@ -210,8 +215,15 @@ def build_chain(llm, retriever: BaseRetriever, system_prompt: str) -> Runnable:
         # Adjust retriever k at runtime and retrieve documents
         if hasattr(retriever, "search_kwargs"):
             retriever.search_kwargs["k"] = top_k  # type: ignore[attr-defined]
-        # Use LangChain's unified Runnable API (invoke) for retrieval
-        docs = retriever.invoke(question)
+        # Prefer vectorstore retrieval with scores when available
+        try:
+            docs = vectorstore.similarity_search_with_score(question, k=top_k)
+        except Exception:
+            try:
+                docs = vectorstore.similarity_search_with_relevance_scores(question, k=top_k)
+            except Exception:
+                # Fallback to retriever without scores
+                docs = retriever.invoke(question)
 
         # Prepare context JSON for the prompt
         context_json = _format_context_items(docs)
@@ -309,8 +321,8 @@ def run_chain(
     )
     system_prompt = load_system_prompt(str(prompt_path))
 
-    retriever = build_retriever(faiss_dir=faiss_dir, embeddings=embeddings)
-    chain = build_chain(llm=llm, retriever=retriever, system_prompt=system_prompt)
+    retriever, vectorstore = build_retriever(faiss_dir=faiss_dir, embeddings=embeddings)
+    chain = build_chain(llm=llm, retriever=retriever, vectorstore=vectorstore, system_prompt=system_prompt)
 
     inputs = {"question": question, "interaction_id": interaction_id, "top_k": top_k}
     return chain.invoke(inputs)

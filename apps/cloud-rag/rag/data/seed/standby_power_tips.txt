@@ -1,0 +1,4 @@
+To reduce standby (vampire) power:
+- Unplug idle chargers and devices.
+- Use advanced (smart) power strips for entertainment centers and offices.
+- Disable always-on features you don't use (e.g., “quick start”).
