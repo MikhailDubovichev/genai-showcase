@@ -16,6 +16,11 @@ Design goals:
 - Read the system prompt from the app's config directory to keep content separate from logic.
 - Validate strictly against the cloud EnergyEfficiencyResponse to guarantee a stable contract
   for the edge app and frontend. Validation errors surface as ValueError with concise messages.
+
+TODO (future retrieval upgrades):
+- Add MMR (Maximal Marginal Relevance) to diversify top‑k results without changing the API surface.
+- Add hybrid lexical+dense retrieval (e.g., BM25 + FAISS) and simple re‑ranking (cross‑encoder or LLM‑based),
+  keeping the public endpoint and response schema unchanged. These should be toggled via config only.
 """
 
 from __future__ import annotations

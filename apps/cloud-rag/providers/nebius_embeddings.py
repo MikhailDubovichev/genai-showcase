@@ -9,12 +9,6 @@ rotate credentials without changing code. The function validates that the
 NEBIUS_API_KEY is present and raises a clear error if not, guiding the user to
 export the key before running the seeding script or the application code that
 depends on embeddings.
-
-Design philosophy mirrors the edge server: isolate provider wiring in a small
-module that can be imported by scripts and runtime code alike, keep logging
-lightweight and structured, and fail fast with actionable messages when
-required configuration is missing. This keeps the rest of the codebase focused
-on application logic and response validation responsibilities.
 """
 
 from __future__ import annotations
@@ -30,13 +24,6 @@ logger = logging.getLogger(__name__)
 def get_embeddings() -> Any:
     """
     Construct and return a NebiusEmbeddings instance using configured model and env.
-
-    This function reads the embedding model name from CONFIG under the
-    `embeddings.name` key, defaulting to "BAAI/bge-en-icl" if unspecified. It
-    retrieves the NEBIUS_API_KEY from the environment (ENV mapping) and raises a
-    RuntimeError if the key is missing or empty, because the provider requires an
-    API key to authenticate. On success, it imports NebiusEmbeddings from the
-    official LangChain Nebius integration and returns a constructed instance.
 
     Returns:
         Any: A NebiusEmbeddings instance suitable for passing to LangChain FAISS

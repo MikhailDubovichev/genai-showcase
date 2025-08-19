@@ -25,7 +25,7 @@ cd apps/cloud-rag
 cat > rag/data/seed/standby_power.txt <<'TXT'
 Standby power (vampire power) can be reduced by unplugging idle chargers and using advanced power strips.
 TXT
-poetry run python scripts/seed_index.py
+poetry run python -m scripts.seed_index
 ```
 
 4) Run the server
@@ -51,7 +51,8 @@ curl -s -X POST http://localhost:8000/api/rag/answer \
 ## Configuration
 - `apps/cloud-rag/config/config.json` controls model names and paths.
 - `NEBIUS_API_KEY` must be present in the environment.
-- FAISS index path defaults to `apps/cloud-rag/faiss_index`.
+- FAISS index path defaults to `faiss_index` (relative to this folder).
+- A `faiss_index/manifest.json` is written during seeding with embedding model and dimension. If you change the embedding model, delete/reseed the index.
 
 ## Project structure (cloud)
 ```

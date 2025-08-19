@@ -12,15 +12,31 @@ locally during development.
 
 CLI usage (macOS zsh example):
     export NEBIUS_API_KEY=...; \
-    python apps/cloud-rag/scripts/seed_index.py \
-        --data-dir apps/cloud-rag/rag/data/seed \
-        --index-dir apps/cloud-rag/faiss_index
+    poetry run python -m scripts.seed_index \
+        --data-dir rag/data/seed \
+        --index-dir faiss_index
 
 The script emits structured log messages covering the files discovered, the
 number of chunks produced, the embedding model used, and the final index path.
 It fails fast with actionable errors if the Nebius API key is missing or if the
 FAISS integration is unavailable, guiding the developer to install any missing
 packages or to provide required environment variables.
+
+TODO: (future improvements):
+1) Incremental seeding with change detection
+   - Maintain a manifest of processed files with a strong content hash (e.g.,
+     SHA‑256). On each run, compute hashes for files under `rag/data/seed/` and
+     only (re)embed those that are new or changed. Skip unchanged files and
+     merge new vectors into FAISS (or rebuild when the embedding model changes).
+   - Store: { path, sha256, chunk_size, chunk_overlap, embedding_model, seeded_at }.
+
+2) PDF ingestion with paragraph‑aware chunking
+   - Add support for PDFs via LangChain loaders (e.g., PyPDFDirectoryLoader or
+     UnstructuredPDFLoader). Use a paragraph‑based splitter that honors blank
+     lines (chunk between two empty lines above/below). LangChain’s text
+     splitters can be configured with separators such as ["\n\n", "\n", " ", ""].
+   - Preserve metadata like page number and file name so the retriever can
+     surface meaningful citations (sourceId could include page markers).
 """
 
 from __future__ import annotations
@@ -31,7 +47,7 @@ import os
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-from providers.embeddings import get_embeddings
+from providers.nebius_embeddings import get_embeddings
 import json
 from datetime import datetime, timezone
 

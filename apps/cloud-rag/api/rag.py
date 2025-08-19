@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from config import CONFIG
-from providers.embeddings import get_embeddings
+from providers.nebius_embeddings import get_embeddings
 from providers.nebius_llm import get_llm
 from rag.chain import run_chain
 
