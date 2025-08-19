@@ -1,0 +1,113 @@
+"""
+LangFuse client initializer for the Cloud RAG service (minimal, lazy, and optional).
+
+This module provides a tiny integration layer for LangFuse that matches the MVP
+requirements: initialize a client once at application startup if credentials are
+present, and shut it down gracefully during application shutdown. The goal is to
+centralize all LangFuse wiring in a single, well-documented place so the rest of
+the codebase remains agnostic to the presence or absence of the observability
+backend. If credentials are not provided or the library is not installed, the
+functions return None and log a concise hint instead of raising, ensuring that
+the server remains fully functional in a no-op mode.
+
+Behavior summary:
+- Reads public/secret keys from the environment mapping exposed by `config.ENV`.
+- Reads the host from `config.CONFIG["langfuse"]["host"]`, defaulting to the
+  public cloud endpoint if not present in config.json.
+- On first call to `get_langfuse()`, returns a memoized client or creates one
+  if keys and library are available; otherwise logs a one-time warning and
+  returns None.
+- `close_langfuse()` safely shuts down the client if it was created; otherwise
+  it performs a no-op. Errors during shutdown are swallowed with a light log.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+from config import CONFIG, ENV
+
+logger = logging.getLogger(__name__)
+
+_client: Optional[Any] = None
+_warned_disabled: bool = False
+
+
+def get_langfuse() -> Optional[Any]:
+    """
+    Lazily construct and return a Langfuse client if credentials are present.
+
+    This function implements a minimal singleton pattern for the Langfuse client.
+    It first checks whether a client has already been created in this process and
+    immediately returns it if so. If no client exists, the function reads the
+    `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` from the `ENV` mapping and the
+    `host` value from `CONFIG["langfuse"]["host"]`. If either key is missing or
+    empty, the function logs a one-time warning and returns None to keep the app
+    operational in environments where Langfuse is not configured.
+
+    If the `langfuse` package is not installed, a concise hint is logged with an
+    installation command that developers can run locally. When all requirements are
+    satisfied, the function constructs `Langfuse(public_key=..., secret_key=...,
+    host=...)`, memoizes it, and returns the instance.
+
+    Returns:
+        Optional[Any]: A Langfuse client instance if configured and available; otherwise None.
+    """
+    global _client, _warned_disabled
+
+    if _client is not None:
+        return _client
+
+    public_key = ENV.get("LANGFUSE_PUBLIC_KEY", "")  # type: ignore[assignment]
+    secret_key = ENV.get("LANGFUSE_SECRET_KEY", "")  # type: ignore[assignment]
+    host = (CONFIG.get("langfuse", {}) or {}).get("host", "https://cloud.langfuse.com")  # type: ignore[assignment]
+
+    if not public_key or not secret_key:
+        if not _warned_disabled:
+            logger.warning(
+                "LangFuse disabled: missing LANGFUSE_PUBLIC_KEY/SECRET_KEY."
+            )
+            _warned_disabled = True
+        return None
+
+    try:
+        from langfuse import Langfuse  # type: ignore
+    except ImportError:
+        logger.warning("LangFuse library not installed. Install with: poetry add langfuse")
+        return None
+
+    try:
+        _client = Langfuse(public_key=public_key, secret_key=secret_key, host=str(host))
+        logger.info("LangFuse client initialized for host: %s", host)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("LangFuse initialization failed: %s", exc)
+        _client = None
+    return _client
+
+
+def close_langfuse() -> None:
+    """
+    Close and flush the Langfuse client if it was previously initialized.
+
+    This helper ensures that any buffered data is flushed and that resources are
+    released when the application shuts down. If no client exists or if the
+    underlying SDK does not expose a shutdown/flush method, the function returns
+    quietly without raising. This behavior keeps application shutdown paths
+    robust and avoids spurious errors in environments where Langfuse is not in use.
+    """
+    global _client
+    if _client is None:
+        return
+    try:
+        # Try common termination methods; ignore if not present
+        if hasattr(_client, "shutdown"):
+            _client.shutdown()  # type: ignore[attr-defined]
+        elif hasattr(_client, "flush"):
+            _client.flush()  # type: ignore[attr-defined]
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("LangFuse shutdown encountered an issue: %s", exc)
+    finally:
+        _client = None
+
+

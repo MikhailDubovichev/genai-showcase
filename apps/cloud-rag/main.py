@@ -48,6 +48,7 @@ if str(CURRENT_DIR) not in sys.path:
 
 from api.health import router as health_router  # noqa: E402  (import after sys.path adjustment)
 from api import rag as rag_router  # noqa: E402
+from providers.langfuse import get_langfuse, close_langfuse  # noqa: E402
 from config import CONFIG  # noqa: E402
 
 
@@ -95,6 +96,28 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    """
+    Initialize optional providers at application startup.
+
+    We attempt to initialize LangFuse based on environment/configuration. If credentials are
+    absent or the library is not installed, the provider returns None and the app continues
+    to run in no-op mode.
+    """
+    client = get_langfuse()
+    if client is not None:
+        app.state.langfuse = client
+
+
+@app.on_event("shutdown")
+def _on_shutdown() -> None:
+    """
+    Cleanly shut down optional providers when the application stops.
+    """
+    close_langfuse()
 
 
 if __name__ == "__main__":
