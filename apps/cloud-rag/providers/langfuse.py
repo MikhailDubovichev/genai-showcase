@@ -111,3 +111,33 @@ def close_langfuse() -> None:
         _client = None
 
 
+def create_trace(trace_id: str, name: Optional[str] = None, metadata: Optional[dict] = None) -> Optional[object]:
+    """
+    Create a LangFuse trace for the given identifier, if the client is available.
+
+    This helper encapsulates the minimal trace creation required for the MVP. It fetches the
+    memoized LangFuse client via `get_langfuse()`. If the client is not initialized (because keys
+    are missing or the library is not present), the function returns None and performs no work so
+    that application behavior remains unchanged. When a client is present, it attempts to create or
+    upsert a trace with the specified `trace_id`. Any exceptions thrown by the provider are caught
+    and logged at warning level, and the function returns None in that case to keep the request
+    path resilient.
+
+    Args:
+        trace_id (str): Stable identifier for the trace; we use the API request's interactionId.
+        name (Optional[str]): Optional human-readable name for the trace. Defaults to "rag.answer".
+        metadata (Optional[dict]): Optional metadata payload to attach at trace creation.
+
+    Returns:
+        Optional[object]: A trace object if successfully created; None if disabled or on failure.
+    """
+    client = get_langfuse()
+    if client is None:
+        return None
+    try:
+        return client.trace(id=trace_id, name=name or "rag.answer", metadata=metadata or {})
+    except Exception as exc:  # pragma: no cover - provider-level failure
+        logger.warning("LangFuse trace creation failed for %s: %s", trace_id, exc)
+        return None
+
+

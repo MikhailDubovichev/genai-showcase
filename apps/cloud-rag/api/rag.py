@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from config import CONFIG
 from providers.nebius_embeddings import get_embeddings
 from providers.nebius_llm import get_llm
+from providers.langfuse import create_trace
 from rag.chain import run_chain
 
 
@@ -72,6 +73,13 @@ def answer_rag(req: RAGRequest) -> JSONResponse:
         error object on failure.
     """
     try:
+        # Create a LangFuse trace for this request (no-op if disabled/missing)
+        create_trace(
+            trace_id=req.interactionId,
+            name="rag.answer",
+            metadata={"endpoint": "/api/rag/answer"},
+        )
+
         faiss_dir = str((CONFIG.get("paths", {}) or {}).get("faiss_index_dir", "apps/cloud-rag/faiss_index"))
         embeddings = get_embeddings()
         llm = get_llm()

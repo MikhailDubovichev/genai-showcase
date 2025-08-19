@@ -18,8 +18,8 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Endpoint: `POST /api/rag/answer` returns validated JSON
 
 ## M3 — LangFuse (cloud-only minimal)
-- [ ] Initialize LangFuse client from env at startup
-- [ ] Create trace per `/api/rag/answer` using `interactionId`
+- [X] Initialize LangFuse client from env at startup
+- [X] Create trace per `/api/rag/answer` using `interactionId`
 - [ ] Log fields: `latency_ms`, `model`, `tokens_prompt`, `tokens_completion`, `json_valid`, `retrieved_k`, optional `error_type`
 
 ## M4 — Edge integration (cloud-first with fallback)
