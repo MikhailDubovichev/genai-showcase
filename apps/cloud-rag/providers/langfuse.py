@@ -135,9 +135,64 @@ def create_trace(trace_id: str, name: Optional[str] = None, metadata: Optional[d
     if client is None:
         return None
     try:
-        return client.trace(id=trace_id, name=name or "rag.answer", metadata=metadata or {})
+        # Establish an active trace context and upsert name/metadata.
+        try:
+            from langfuse.types import TraceContext  # type: ignore
+            tc = TraceContext(trace_id=trace_id)
+        except Exception:
+            tc = None
+
+        if tc is not None:
+            with client.start_as_current_span(name=name or "rag.answer", trace_context=tc):
+                client.update_current_trace(name=name or "rag.answer", metadata=metadata or {})
+        else:
+            # Fallback: set id seed and update without an active span
+            client.create_trace_id(seed=trace_id)
+            client.update_current_trace(name=name or "rag.answer", metadata=metadata or {})
+        return {"id": trace_id}
     except Exception as exc:  # pragma: no cover - provider-level failure
         logger.warning("LangFuse trace creation failed for %s: %s", trace_id, exc)
         return None
+
+
+def update_trace_metadata(trace_id: str, metadata: dict) -> None:
+    """
+    Upsert metadata on an existing LangFuse trace identified by trace_id.
+
+    This function provides a minimal mechanism to enrich a trace with additional fields after
+    it has been created. The implementation is deliberately defensive: it silently returns if
+    LangFuse is not configured or the SDK is not available, and it catches any exceptions raised
+    by the provider during the upsert operation to avoid impacting the request flow. Metadata is
+    passed as-is to the provider. The trace name is fixed to "rag.answer" to align with our
+    endpoint naming, while the trace id comes from the API request's interactionId for stable
+    correlation across systems.
+
+    Args:
+        trace_id (str): The identifier of the trace to update (the API interactionId).
+        metadata (dict): A flat dictionary of fields to be upserted onto the trace object.
+
+    Returns:
+        None: The function operates in a best-effort manner and never raises.
+    """
+    client = get_langfuse()
+    if client is None:
+        return
+    try:
+        # Ensure we are updating the intended trace id using an active span context when possible.
+        try:
+            from langfuse.types import TraceContext  # type: ignore
+            tc = TraceContext(trace_id=trace_id)
+        except Exception:
+            tc = None
+
+        if tc is not None:
+            with client.start_as_current_span(name="rag.answer.meta", trace_context=tc):
+                client.update_current_trace(metadata=metadata or {})
+        else:
+            client.create_trace_id(seed=trace_id)
+            client.update_current_trace(metadata=metadata or {})
+    except Exception as exc:  # pragma: no cover - provider-level failure
+        logger.warning("LangFuse trace metadata update failed for %s: %s", trace_id, exc)
+        return
 
 

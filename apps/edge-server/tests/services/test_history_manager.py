@@ -40,7 +40,7 @@ def test_generate_interaction_id_uuid():
     iid = hm.generate_interaction_id()
     assert isinstance(iid, str)
     # UUID v4 pattern (relaxed)
-    assert re.match(r"^[0-9a-fA-F\-]{36}$", iid)
+    assert re.match(r"^[0-9a-f]{32}$", iid) or re.match(r"^[0-9a-fA-F\-]{36}$", iid)
 
 
 def test_get_user_hash_is_lowercase_and_deterministic():

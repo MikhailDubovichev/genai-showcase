@@ -36,6 +36,7 @@ infra/**
 !apps/edge-server/main.py
 !apps/edge-server/config/logging_config.py
 !apps/edge-server/monitoring/metrics.py
+!apps/edge-server/services/history_manager.py
 
 # Additional edge reference bundle to better mimic style and contracts
 !apps/edge-server/shared/models.py

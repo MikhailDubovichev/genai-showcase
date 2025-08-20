@@ -21,6 +21,7 @@ retriever configuration—without coupling HTTP concerns to RAG internals.
 from __future__ import annotations
 
 import json
+import time
 import logging
 from typing import Any
 
@@ -31,7 +32,7 @@ from pydantic import BaseModel, Field
 from config import CONFIG
 from providers.nebius_embeddings import get_embeddings
 from providers.nebius_llm import get_llm
-from providers.langfuse import create_trace
+from providers.langfuse import create_trace, update_trace_metadata
 from rag.chain import run_chain
 
 
@@ -59,19 +60,26 @@ class RAGRequest(BaseModel):
 @router.post("/rag/answer")
 def answer_rag(req: RAGRequest) -> JSONResponse:
     """
-    Answer a question using the Cloud RAG pipeline and return validated JSON.
+    Answer a question using the Cloud RAG pipeline, create/update a LangFuse trace, and return
+    validated JSON.
 
-    The handler builds the embeddings and LLM providers using the Cloud configuration,
-    resolves the FAISS index directory from CONFIG paths, and executes the end-to-end
-    RAG chain. The chain guarantees that the output conforms to the
-    EnergyEfficiencyResponse schema; upon success we return the validated JSON object.
-    If any error occurs (missing credentials, index missing, validation failure),
-    a concise error JSON with HTTP 500 is returned to the client.
+    This endpoint orchestrates the full retrieve‑then‑read flow and adds minimal observability.
+    It first ensures a LangFuse trace exists whose id equals the request's `interactionId`.
+    The handler then resolves configuration (FAISS index path, model), constructs the embeddings
+    and LLM providers, and executes the RAG chain which retrieves context, renders the strict
+    JSON prompt, calls the model, and validates the output against the `EnergyEfficiencyResponse`
+    schema. On success, we compute lightweight telemetry (latency_ms, model name, retrieved_k,
+    json_valid=True, placeholder token counts = None) and upsert these fields onto the same trace.
+    On failure, we capture latency, set json_valid=False, include the exception type, and mark
+    http_status=500. All LangFuse interactions are best‑effort and become no‑ops when the client
+    is not configured or the library is missing; the API response contract remains unchanged.
 
     Returns:
-        JSONResponse: A JSON payload conforming to EnergyEfficiencyResponse on success, or an
-        error object on failure.
+        JSONResponse: A JSON payload conforming to `EnergyEfficiencyResponse` on success.
+        On errors, returns a concise error JSON with HTTP 500 while attempting to update the
+        trace with diagnostic metadata.
     """
+    start_ts = time.monotonic()
     try:
         # Create a LangFuse trace for this request (no-op if disabled/missing)
         create_trace(
@@ -91,9 +99,39 @@ def answer_rag(req: RAGRequest) -> JSONResponse:
             embeddings=embeddings,
             llm=llm,
         )
-        return JSONResponse(json.loads(result_json))
+        obj = json.loads(result_json)
+        latency_ms = int((time.monotonic() - start_ts) * 1000)
+        model = (CONFIG.get("llm", {}) or {}).get("model", "unknown")
+        retrieved_k = len(obj.get("content", [])) if isinstance(obj, dict) else 0
+        update_trace_metadata(
+            req.interactionId,
+            {
+                "latency_ms": latency_ms,
+                "model": model,
+                "tokens_prompt": None,
+                "tokens_completion": None,
+                "json_valid": True,
+                "retrieved_k": retrieved_k,
+                "http_status": 200,
+            },
+        )
+        return JSONResponse(obj)
     except Exception as e:  # pragma: no cover - broad surface area during MVP
         logger.error("RAG pipeline error: %s", e)
+        latency_ms = int((time.monotonic() - start_ts) * 1000)
+        update_trace_metadata(
+            req.interactionId,
+            {
+                "latency_ms": latency_ms,
+                "model": (CONFIG.get("llm", {}) or {}).get("model", "unknown"),
+                "tokens_prompt": None,
+                "tokens_completion": None,
+                "json_valid": False,
+                "retrieved_k": req.topK,
+                "error_type": type(e).__name__,
+                "http_status": 500,
+            },
+        )
         return JSONResponse(
             {"message": "RAG pipeline error", "type": "error", "detail": str(e)},
             status_code=500,

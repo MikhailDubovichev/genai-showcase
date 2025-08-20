@@ -38,7 +38,7 @@ def generate_interaction_id() -> str:
     Returns:
         str: A UUID4 string (e.g., "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
     """
-    return str(uuid.uuid4())
+    return uuid.uuid4().hex
 
 def get_user_hash(email: str) -> str:
     """
