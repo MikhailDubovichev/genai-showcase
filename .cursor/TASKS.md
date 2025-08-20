@@ -25,7 +25,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M4 — Edge integration (cloud-first with fallback)
 - [X] Add to edge `config.json`: `features.energy_efficiency_rag_enabled`, `cloud_rag.base_url`
 - [X] Add `shared/rag_client.py` (HTTP POST to cloud with short timeout)
-- [ ] Edit `pipelines/energy_efficiency/pipeline_energy_efficiency.py`: try cloud when flag on; fallback to local LLM on error/timeout
+- [X] Edit `pipelines/energy_efficiency/pipeline_energy_efficiency.py`: try cloud when flag on; fallback to local LLM on error/timeout
 - [ ] Ensure history/logging unchanged; responses still match `EnergyEfficiencyResponse`
 
 ## M5 — Feedback sync (daily batch)

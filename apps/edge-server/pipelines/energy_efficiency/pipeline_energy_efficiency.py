@@ -1,21 +1,32 @@
 """
 pipelines/energy_efficiency/pipeline_energy_efficiency.py
 
-Energy efficiency pipeline implementation.
+Energy efficiency pipeline implementation (cloud‑first with graceful fallback).
 
-This module contains the main EnergyEfficiencyPipeline class that handles
-energy efficiency advices.
+This module contains the main `EnergyEfficiencyPipeline` which now supports a
+cloud‑first retrieval‑augmented generation path guarded by a feature flag, while
+preserving the original local LLM behavior as a seamless fallback. When the edge
+configuration flag `CONFIG["features"]["energy_efficiency_rag_enabled"]` is true,
+the pipeline first attempts to call the Cloud RAG service via a short‑timeout HTTP
+request and, on success, validates the strict JSON (JavaScript Object Notation)
+response against the shared schema before returning it to the caller. If the cloud
+request times out, fails, or produces invalid JSON, the pipeline logs a concise
+warning and automatically falls back to the original local LLM path so API behavior
+and schema remain stable. When the flag is false, the pipeline behaves exactly as
+before, using only the local LLM path with no network dependency.
 """
 
 from typing import Dict, Any
 import logging
 import json
 from config.logging_config import get_logger
+from config import CONFIG
 
 from ..base import BasePipeline
 from llm_cloud.provider import get_client
 from shared.utils import create_error_response
 from shared.models import EnergyEfficiencyResponse
+from shared.rag_client import post_answer_from_config, RAGClientError, RAGClientTimeoutError
 
 logger = get_logger(__name__)
 
@@ -36,9 +47,14 @@ class EnergyEfficiencyPipeline(BasePipeline):
     - Energy saving strategy recommendations
     - Future: RAG integration with energy efficiency knowledge base
     
-    Note:
-    This pipeline does NOT use tools since energy efficiency advice
-    is knowledge-based rather than requiring real-time device data.
+    Notes:
+    - Cloud‑first behavior: When `features.energy_efficiency_rag_enabled` is true,
+      the pipeline posts the user question to the Cloud RAG endpoint with a short
+      timeout. On success, the validated JSON is returned immediately. On timeout
+      or error, the pipeline logs a warning and falls back to the local LLM path,
+      ensuring the response schema and user experience remain consistent.
+    - No device tools: This pipeline does not execute device tools; it remains
+      knowledge‑based and focuses on educational and advisory responses.
     """
     
     def setup(self) -> None:
@@ -98,6 +114,53 @@ class EnergyEfficiencyPipeline(BasePipeline):
             # Inject interaction_id into system prompt for LLM response
             system_prompt_with_id = self.system_prompt + f"\n\nFor this conversation turn, use this interactionId in your JSON response: {interaction_id}\n"
             
+            # Cloud-first RAG (feature-flagged) with graceful fallback
+            use_cloud = bool((CONFIG.get("features", {}) or {}).get("energy_efficiency_rag_enabled", False))
+            if use_cloud:
+                try:
+                    # Use pipeline model setting if present; otherwise default to 3
+                    top_k = 3
+                    try:
+                        top_k = int(self.model_config.get("settings", {}).get("top_k", 3))
+                    except Exception:
+                        pass
+
+                    cloud_obj = post_answer_from_config(
+                        question=message,
+                        interaction_id=interaction_id,
+                        top_k=top_k,
+                        # TODO: Move hardcoded timeout to CONFIG["cloud_rag"]["timeout_s"]
+                        timeout_s=1.5,  # short timeout to keep edge responsive
+                    )
+
+                    # Validate cloud response and return immediately on success
+                    validated = EnergyEfficiencyResponse(**cloud_obj)
+                    return {
+                        "response_content": validated.model_dump_json(),
+                        "interaction_id": interaction_id,
+                    }
+
+                except (RAGClientTimeoutError, RAGClientError) as cloud_err:
+                    logger.warning(
+                        "Cloud RAG unavailable or failed; falling back to local path",
+                        extra={
+                            "error_type": type(cloud_err).__name__,
+                            "pipeline_name": self.get_pipeline_name(),
+                            "interaction_id": interaction_id,
+                        },
+                    )
+                    # Fallback to local path below
+                except Exception as cloud_unexpected:
+                    logger.warning(
+                        "Unexpected cloud error; falling back to local path",
+                        extra={
+                            "error_type": type(cloud_unexpected).__name__,
+                            "pipeline_name": self.get_pipeline_name(),
+                            "interaction_id": interaction_id,
+                        },
+                    )
+                    # Fallback to local path below
+
             # Prepare messages for LLM (no tools needed for energy efficiency)
             # Include the user's message so the model has the actual question context.
             messages = [
