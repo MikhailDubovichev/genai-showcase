@@ -20,10 +20,10 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M3 — LangFuse (cloud-only minimal)
 - [X] Initialize LangFuse client from env at startup
 - [X] Create trace per `/api/rag/answer` using `interactionId`
-- [ ] Log fields: `latency_ms`, `model`, `tokens_prompt`, `tokens_completion`, `json_valid`, `retrieved_k`, optional `error_type`
+- [X] Log fields: `latency_ms`, `model`, `tokens_prompt`, `tokens_completion`, `json_valid`, `retrieved_k`, optional `error_type`
 
 ## M4 — Edge integration (cloud-first with fallback)
-- [ ] Add to edge `config.json`: `features.energy_efficiency_rag_enabled`, `cloud_rag.base_url`
+- [X] Add to edge `config.json`: `features.energy_efficiency_rag_enabled`, `cloud_rag.base_url`
 - [ ] Add `shared/rag_client.py` (HTTP POST to cloud with short timeout)
 - [ ] Edit `pipelines/energy_efficiency/pipeline_energy_efficiency.py`: try cloud when flag on; fallback to local LLM on error/timeout
 - [ ] Ensure history/logging unchanged; responses still match `EnergyEfficiencyResponse`

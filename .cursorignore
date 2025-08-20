@@ -1,4 +1,4 @@
-# .cursorignore preset — CLOUD-RAG focus
+# .cursorignore preset — CLOUD/EDGE integration focus (M4)
 # -----------------------------------------------------------------------------
 # PURPOSE
 # Use this when actively working on the cloud RAG service (milestones M2–M6).
@@ -6,8 +6,7 @@
 # reduce noise and keep the assistant focused on cloud development.
 # -----------------------------------------------------------------------------
 
-# Focus on cloud-rag — ignore edge, gradio, and infra
-apps/edge-server/**
+# Focus on cloud-rag + edge together — ignore only gradio and infra
 apps/gradio/**
 infra/**
 
@@ -31,19 +30,7 @@ infra/**
 !.cursor/.cursorrules
 !TASKS.md
 
-# Re-include a few edge reference files to mirror architecture/style when focusing on cloud
-!apps/edge-server/README.md
-!apps/edge-server/main.py
-!apps/edge-server/config/logging_config.py
-!apps/edge-server/monitoring/metrics.py
-!apps/edge-server/services/history_manager.py
-
-# Additional edge reference bundle to better mimic style and contracts
-!apps/edge-server/shared/models.py
-!apps/edge-server/shared/utils.py
-!apps/edge-server/pipelines/base.py
-!apps/edge-server/core/orchestrator.py
-!apps/edge-server/core/classifier.py
+# Edge app is now included by default for integration work; specific re-includes not needed.
 
 # Optional: keep tests included to guide development
 # (Comment the next line if you want to exclude tests temporarily.)
