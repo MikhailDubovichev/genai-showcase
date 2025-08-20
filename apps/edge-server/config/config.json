@@ -80,6 +80,6 @@
     "llm_error_messages": {
         "json_parse_fallback": "I apologize, but I encountered an issue formatting my response. Please try your request again."
     },
-    "features": { "energy_efficiency_rag_enabled": false },
+    "features": { "energy_efficiency_rag_enabled": true },
     "cloud_rag": { "base_url": "http://localhost:8000" }
 } 

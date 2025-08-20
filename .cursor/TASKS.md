@@ -26,7 +26,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Add to edge `config.json`: `features.energy_efficiency_rag_enabled`, `cloud_rag.base_url`
 - [X] Add `shared/rag_client.py` (HTTP POST to cloud with short timeout)
 - [X] Edit `pipelines/energy_efficiency/pipeline_energy_efficiency.py`: try cloud when flag on; fallback to local LLM on error/timeout
-- [ ] Ensure history/logging unchanged; responses still match `EnergyEfficiencyResponse`
+- [X] Ensure history/logging unchanged; responses still match `EnergyEfficiencyResponse`
 
 ## M5 — Feedback sync (daily batch)
 - [ ] Edge: `services/feedback_sync.py` reads local feedback, filters by `last_synced_at` (`user_data/feedback_sync_state.json`), POSTs batch, updates state

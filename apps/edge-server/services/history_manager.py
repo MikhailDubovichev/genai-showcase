@@ -29,16 +29,22 @@ os.makedirs(CONVERSATIONS_DIR, exist_ok=True)
 
 def generate_interaction_id() -> str:
     """
-    Generates a unique interaction ID using UUID4.
+    Generate a unique interaction identifier as 32 lowercase hexadecimal characters.
 
-    This function creates a universally unique identifier (UUID) for each
-    user-assistant interaction. The UUID4 algorithm generates random UUIDs
-    that are extremely unlikely to collide.
+    This helper produces an identifier suitable for systems that expect a compact
+    UUID without hyphens, such as observability tools that require a strict
+    32‑character lowercase hexadecimal format. Internally, it uses UUID version 4
+    (random) and returns its hexadecimal representation via the standard library's
+    "hex" attribute. The "hex" form is already lowercase and contains no dashes,
+    which makes it safe to embed in URLs, filenames, and logging contexts while
+    keeping the representation short and unambiguous. The probability of collision
+    is negligible for typical application workloads.
 
     Returns:
-        str: A UUID4 string (e.g., "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+        str: A 32‑character lowercase hexadecimal string (e.g., "a1b2c3d4e5f67890abcdef1234567890").
     """
-    return uuid.uuid4().hex
+    # Ensure explicit lowercase even though uuid.uuid4().hex is already lowercase by default
+    return uuid.uuid4().hex.lower()
 
 def get_user_hash(email: str) -> str:
     """
