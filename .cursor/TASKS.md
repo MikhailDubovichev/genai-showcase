@@ -30,7 +30,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M5 — Feedback sync (daily batch)
 - [X] Edge: feedback sync service (`services/feedback_sync.py`) with stdlib I/O; extract HTTP provider to `shared/feedback_client.py`; reads local feedback, filters by `last_synced_at` (`user_data/feedback_sync_state.json`), POSTs batch, updates state
-- [ ] Scheduler: add APScheduler to edge startup to run daily
+- [X] Scheduler: add APScheduler to edge startup to run daily
 - [ ] Cloud: `POST /api/feedback/sync` dedupes by `feedback_id`, persists to SQLite (`data/db.sqlite`), returns `{accepted, duplicates}`
 - [ ] Cloud: attach LangFuse `user_feedback` score (+1/-1) to the trace by `interactionId`
 

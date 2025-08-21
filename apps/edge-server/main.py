@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 import logging
 from config import CONFIG
+from services.feedback_scheduler import start_feedback_scheduler, shutdown_feedback_scheduler
 
 # --- Router Imports ---
 from api import context as context_router
@@ -42,6 +43,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    """Start background schedulers and one-off integrations."""
+    start_feedback_scheduler(app)
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    """Stop background schedulers gracefully."""
+    shutdown_feedback_scheduler(app)
 
 # The uvicorn server is used to run the FastAPI application. 
 if __name__ == '__main__':
