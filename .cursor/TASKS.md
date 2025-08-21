@@ -36,8 +36,9 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M6 — Minimal evaluator (single score)
 - [X] `eval/relevance_evaluator.py`: LLM-as-judge relevance ∈ [0,1]
-- [X] After `/api/rag/answer`, compute and log `score(name='relevance')` in LangFuse
-- [ ] (Optional) `eval/data/golden.jsonl` (~20 Qs) + `eval/run_eval.py` to compute avg relevance & JSON-valid rate
+- [X] After `/api/rag/answer`, enqueue eval artifacts to `eval_queue` (no latency in request path)
+- [X] Process `eval_queue`: compute relevance offline, log `score(name='relevance')` to LangFuse, mark processed
+- [X] Golden-run: `eval/run_eval.py` reads `eval/data/golden.jsonl`, runs RAG, evaluates relevance, prints aggregate stats
 
 ## M7 — Gradio UIs (tiny demos)
 - [ ] Chat UI (`apps/gradio/chat/app.py`): textbox → Edge `/api/prompt`; show JSON + latency (config `EDGE_API_BASE_URL`)
