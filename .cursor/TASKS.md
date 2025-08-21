@@ -32,10 +32,10 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Edge: feedback sync service (`services/feedback_sync.py`) with stdlib I/O; extract HTTP provider to `shared/feedback_client.py`; reads local feedback, filters by `last_synced_at` (`user_data/feedback_sync_state.json`), POSTs batch, updates state
 - [X] Scheduler: add APScheduler to edge startup to run daily
 - [X] Cloud: `POST /api/feedback/sync` dedupes by `feedback_id`, persists to SQLite (`data/db.sqlite`), returns `{accepted, duplicates}`
-- [ ] Cloud: attach LangFuse `user_feedback` score (+1/-1) to the trace by `interactionId`
+- [X] Cloud: attach LangFuse `user_feedback` score (+1/-1) to the trace by `interactionId`
 
 ## M6 — Minimal evaluator (single score)
-- [ ] `eval/relevance_evaluator.py`: LLM-as-judge relevance ∈ [0,1]
+- [X] `eval/relevance_evaluator.py`: LLM-as-judge relevance ∈ [0,1]
 - [ ] After `/api/rag/answer`, compute and log `score(name='relevance')` in LangFuse
 - [ ] (Optional) `eval/data/golden.jsonl` (~20 Qs) + `eval/run_eval.py` to compute avg relevance & JSON-valid rate
 
