@@ -11,7 +11,8 @@
   },
   "paths": {
     "faiss_index_dir": "faiss_index",
-    "seed_data_dir": "rag/data/seed"
+    "seed_data_dir": "rag/data/seed",
+    "db_path": "data/db.sqlite"
   },
   "retrieval": {
     "default_top_k": 3,

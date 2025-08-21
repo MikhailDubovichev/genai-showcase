@@ -48,6 +48,7 @@ if str(CURRENT_DIR) not in sys.path:
 
 from api.health import router as health_router  # noqa: E402  (import after sys.path adjustment)
 from api import rag as rag_router  # noqa: E402
+from api import feedback as feedback_router  # noqa: E402
 from providers.langfuse import get_langfuse, close_langfuse  # noqa: E402
 from config import CONFIG  # noqa: E402
 
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     api_router = APIRouter(prefix="/api")
     app.include_router(api_router)
     app.include_router(rag_router.router, prefix="/api", tags=["RAG"])
+    app.include_router(feedback_router.router, prefix="/api", tags=["Feedback"])
 
     logger.info("Cloud RAG FastAPI app created with CORS and /health endpoint")
     return app
