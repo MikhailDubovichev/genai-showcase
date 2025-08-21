@@ -57,9 +57,9 @@ def init_db(db_path: str) -> None:
         con.close()
 
 
-def upsert_feedback_batch(db_path: str, items: List[Dict]) -> Tuple[int, int]:
+def upsert_feedback_batch(db_path: str, items: List[Dict]) -> Tuple[int, int, List[str]]:
     """
-    Insert a batch of feedback items with ON CONFLICT DO NOTHING semantics.
+    Insert a batch of feedback items with ON CONFLICT DO NOTHING semantics and return ids inserted.
 
     Opens a single SQLite connection and transaction to write the provided items to
     the `feedback` table. For each item, attempts an INSERT and counts the row as
@@ -78,13 +78,14 @@ def upsert_feedback_batch(db_path: str, items: List[Dict]) -> Tuple[int, int]:
             - created_at (str)
 
     Returns:
-        Tuple[int, int]: (accepted_count, duplicate_count)
+        Tuple[int, int, List[str]]: (accepted_count, duplicate_count, accepted_ids)
     """
     con = sqlite3.connect(db_path)
     try:
         cur = con.cursor()
         accepted = 0
         duplicates = 0
+        accepted_ids: List[str] = []
         now_iso = _dt.datetime.now(_dt.timezone.utc).isoformat()
         for it in items:
             try:
@@ -104,11 +105,14 @@ def upsert_feedback_batch(db_path: str, items: List[Dict]) -> Tuple[int, int]:
                         now_iso,
                     ),
                 )
-                accepted += 1
+                if cur.rowcount and cur.rowcount > 0:
+                    accepted += 1
+                    fid = str(it.get("feedback_id"))
+                    accepted_ids.append(fid)
             except sqlite3.IntegrityError:
                 duplicates += 1
         con.commit()
-        return accepted, duplicates
+        return accepted, duplicates, accepted_ids
     finally:
         con.close()
 

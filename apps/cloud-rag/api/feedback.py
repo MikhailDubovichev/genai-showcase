@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from config import CONFIG
 from services.feedback_store import init_db, upsert_feedback_batch
+from providers.langfuse import add_user_feedback_score
 
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,33 @@ def sync_feedback(batch: FeedbackBatch) -> JSONResponse:
         if not batch.items:
             return JSONResponse({"accepted": 0, "duplicates": 0})
         items_dicts = [item.model_dump() for item in batch.items]
-        accepted, duplicates = upsert_feedback_batch(db_path, items_dicts)
-        logger.info("feedback_sync accepted=%s duplicates=%s", accepted, duplicates)
+        accepted, duplicates, accepted_ids = upsert_feedback_batch(db_path, items_dicts)
+
+        # Attempt to add user_feedback score for newly accepted items only
+        id_to_item = {it["feedback_id"]: it for it in items_dicts}
+        scored_ok = 0
+        for fid in accepted_ids:
+            it = id_to_item.get(fid)
+            if not it:
+                continue
+            try:
+                add_user_feedback_score(
+                    trace_id=str(it.get("interactionId", "")),
+                    score_value=float(int(it.get("score", 0))),
+                    comment=(it.get("comment") or ""),
+                    name="user_feedback",
+                )
+                scored_ok += 1
+            except Exception:
+                # Best-effort: never fail ingestion due to scoring issues
+                pass
+
+        logger.info(
+            "feedback_sync accepted=%s duplicates=%s scored=%s",
+            accepted,
+            duplicates,
+            scored_ok,
+        )
         return JSONResponse({"accepted": accepted, "duplicates": duplicates})
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("feedback_sync failed: %s", exc)

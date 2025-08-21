@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Optional
+import re
 
 from config import CONFIG, ENV
 
@@ -176,6 +177,66 @@ def update_trace_metadata(trace_id: str, metadata: dict) -> None:
     """
     client = get_langfuse()
     if client is None:
+        return
+
+
+def add_user_feedback_score(
+    trace_id: str,
+    score_value: float,
+    comment: Optional[str] = None,
+    name: str = "user_feedback",
+) -> None:
+    """
+    Safely attach a user feedback score to a LangFuse trace; best-effort, never raises.
+
+    This helper reports a scalar score for the given trace id using the LangFuse client,
+    intended for recording user feedback signals (e.g., +1 for positive, -1 for negative).
+    If the client is not configured, or if the `trace_id` is not a valid 32 lowercase
+    hexadecimal string, the function quietly returns to avoid noisy failures. The input
+    score is clamped to the inclusive range [-1.0, 1.0]. Any provider exceptions are
+    caught and logged as warnings; ingestion flows must not be affected by scoring.
+
+    Args:
+        trace_id (str): 32 lowercase hex trace id; invalid ids are skipped.
+        score_value (float): The score to record; clamped to [-1.0, 1.0].
+        comment (Optional[str]): Optional free-form note associated with this score.
+        name (str): Metric name to record; defaults to "user_feedback".
+    """
+    client = get_langfuse()
+    if client is None:
+        return
+    if not isinstance(trace_id, str) or not re.fullmatch(r"[0-9a-f]{32}", trace_id or ""):
+        logger.debug("Skipping score: invalid trace_id format")
+        return
+    try:
+        v = max(-1.0, min(1.0, float(score_value)))
+    except Exception:
+        v = 0.0
+
+    try:
+        # Prefer create_score if available; otherwise fall back to current-trace scoring.
+        if hasattr(client, "create_score"):
+            client.create_score(trace_id=trace_id, name=name, value=v, comment=comment or "")
+            return
+        # Fallback path: set current trace context and score it.
+        try:
+            from langfuse.types import TraceContext  # type: ignore
+            tc = TraceContext(trace_id=trace_id)
+        except Exception:
+            tc = None
+
+        if tc is not None and hasattr(client, "score_current_trace") and hasattr(client, "start_as_current_span"):
+            # Use a short-lived span to attach the score in the intended context.
+            with client.start_as_current_span(name=f"score:{name}", trace_context=tc):
+                client.score_current_trace(name=name, value=v, comment=comment or "")
+        else:
+            # Last resort: set id seed and attempt a generic score method if present
+            if hasattr(client, "create_trace_id"):
+                client.create_trace_id(seed=trace_id)
+            if hasattr(client, "score_current_trace"):
+                client.score_current_trace(name=name, value=v, comment=comment or "")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("LangFuse score add failed for %s: %s", trace_id, exc)
         return
     try:
         # Ensure we are updating the intended trace id using an active span context when possible.
