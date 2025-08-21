@@ -34,6 +34,7 @@ from providers.nebius_embeddings import get_embeddings
 from providers.nebius_llm import get_llm
 from providers.langfuse import create_trace, update_trace_metadata
 from rag.chain import run_chain
+from services.eval_queue import enqueue_eval_item
 
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,31 @@ def answer_rag(req: RAGRequest) -> JSONResponse:
                 "http_status": 200,
             },
         )
+
+        # Minimal, best-effort enqueue for offline evaluation (do not affect response)
+        try:
+            question = req.question
+            answer_text = str(obj.get("message", "")) if isinstance(obj, dict) else ""
+            context_chunks = []
+            if isinstance(obj, dict):
+                raw_content = obj.get("content", [])
+                if isinstance(raw_content, list):
+                    for it in raw_content:
+                        if isinstance(it, dict) and "chunk" in it:
+                            context_chunks.append(str(it.get("chunk", "")))
+                            if len(context_chunks) >= 3:
+                                break
+            db_path = str((CONFIG.get("paths", {}) or {}).get("db_path", "data/db.sqlite"))
+            enqueue_eval_item(
+                db_path=db_path,
+                interaction_id=req.interactionId,
+                question=question,
+                answer=answer_text,
+                context_chunks=context_chunks,
+            )
+        except Exception:
+            pass
+
         return JSONResponse(obj)
     except Exception as e:  # pragma: no cover - broad surface area during MVP
         logger.error("RAG pipeline error: %s", e)

@@ -50,6 +50,7 @@ from api.health import router as health_router  # noqa: E402  (import after sys.
 from api import rag as rag_router  # noqa: E402
 from api import feedback as feedback_router  # noqa: E402
 from providers.langfuse import get_langfuse, close_langfuse  # noqa: E402
+from services.eval_queue import init_eval_queue  # noqa: E402
 from config import CONFIG  # noqa: E402
 
 
@@ -112,6 +113,12 @@ def _on_startup() -> None:
     client = get_langfuse()
     if client is not None:
         app.state.langfuse = client
+    # Initialize eval queue table (best-effort)
+    try:
+        db_path = str((CONFIG.get("paths", {}) or {}).get("db_path", "data/db.sqlite"))
+        init_eval_queue(db_path)
+    except Exception:
+        pass
 
 
 @app.on_event("shutdown")

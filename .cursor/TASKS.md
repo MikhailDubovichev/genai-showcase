@@ -36,7 +36,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M6 — Minimal evaluator (single score)
 - [X] `eval/relevance_evaluator.py`: LLM-as-judge relevance ∈ [0,1]
-- [ ] After `/api/rag/answer`, compute and log `score(name='relevance')` in LangFuse
+- [X] After `/api/rag/answer`, compute and log `score(name='relevance')` in LangFuse
 - [ ] (Optional) `eval/data/golden.jsonl` (~20 Qs) + `eval/run_eval.py` to compute avg relevance & JSON-valid rate
 
 ## M7 — Gradio UIs (tiny demos)
