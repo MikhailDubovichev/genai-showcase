@@ -212,13 +212,13 @@ def _build_ui() -> gr.Blocks:
         chunk_table = build_chunk_table(obj)
         return pretty, extracted_message, float(max(0.0, dt_ms)), chunk_table
 
-    def handle_reset() -> Tuple[str, str, float, List[List[Any]]]:
+    def handle_reset() -> Tuple[str, str, str, float, List[List[Any]]]:
         """
         Reset the question field and clear all outputs.
 
         Returns empty/default values for all outputs to clear the UI.
         """
-        return "", "", 0.0, []
+        return "", "", "", 0.0, []
 
     with gr.Blocks(title="RAG Explorer (Cloud)") as demo:
         gr.Markdown("# RAG Explorer (Cloud)")
