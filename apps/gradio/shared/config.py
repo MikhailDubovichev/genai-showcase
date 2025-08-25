@@ -46,7 +46,6 @@ def load_gradio_config() -> Dict[str, Any]:
     Raises:
         ValueError: If the config file is missing or invalid JSON.
     """
-
     config_path = Path(__file__).resolve().parents[1] / "config" / "config.json"
     if not config_path.exists():
         raise ValueError(f"Gradio config not found at {config_path}")
@@ -75,12 +74,41 @@ def get_edge_base_url(config: Dict[str, Any]) -> str:
     Raises:
         ValueError: If the URL is missing or does not include http/https scheme.
     """
-
     raw = str((config.get("edge_api_base_url") or "")).strip()
     if not raw:
         raise ValueError("edge_api_base_url is missing in Gradio config")
     if not (raw.startswith("http://") or raw.startswith("https://")):
         raise ValueError("edge_api_base_url must start with http:// or https://")
+    while raw.endswith("/"):
+        raw = raw[:-1]
+    return raw
+
+
+def get_cloud_base_url(config: Dict[str, Any]) -> str:
+    """
+    Extract and normalize the Cloud RAG API base URL from the configuration.
+
+    This helper ensures that the returned string includes an explicit scheme
+    (http or https) and that it does not end with a trailing slash. Normalizing
+    the base URL prevents mistakes when joining paths for requests from the
+    Gradio UI and keeps the behavior consistent across environments. The
+    cloud RAG service provides Retrieval Augmented Generation (RAG) capabilities
+    using vector search and LLM responses.
+
+    Args:
+        config (Dict[str, Any]): Parsed configuration dictionary.
+
+    Returns:
+        str: A normalized base URL such as "http://localhost:8000".
+
+    Raises:
+        ValueError: If the URL is missing or does not include http/https scheme.
+    """
+    raw = str((config.get("cloud_rag_base_url") or "")).strip()
+    if not raw:
+        raise ValueError("cloud_rag_base_url is missing in Gradio config")
+    if not (raw.startswith("http://") or raw.startswith("https://")):
+        raise ValueError("cloud_rag_base_url must start with http:// or https://")
     while raw.endswith("/"):
         raw = raw[:-1]
     return raw
@@ -102,7 +130,6 @@ def get_timeout_seconds(config: Dict[str, Any]) -> float:
     Returns:
         float: Timeout in seconds suitable for Python networking APIs.
     """
-
     try:
         timeout_ms = int(config.get("http_timeout_ms", 5000))
     except Exception:
@@ -129,7 +156,6 @@ def build_url(base: str, path: str) -> str:
     Returns:
         str: The combined URL ready for requests.
     """
-
     normalized_base = base[:-1] if base.endswith("/") else base
     normalized_path = path[1:] if path.startswith("/") else path
     return f"{normalized_base}/{normalized_path}"
