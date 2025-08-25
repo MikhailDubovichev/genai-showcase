@@ -35,6 +35,8 @@ _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from shared.config import (  # noqa: E402
     build_url,
     get_edge_base_url,
+    get_gradio_edge_chat_url,
+    get_gradio_port,
     get_timeout_seconds,
     load_gradio_config,
 )
@@ -157,4 +159,8 @@ def _build_ui() -> gr.Blocks:
 
 
 if __name__ == "__main__":
-    _build_ui().launch(share=False, server_port=7860, server_name="0.0.0.0")
+    cfg = load_gradio_config()
+    gradio_url = get_gradio_edge_chat_url(cfg)
+    port = get_gradio_port(gradio_url)
+    print(f"Starting Edge Chat UI at: {gradio_url}")
+    _build_ui().launch(share=False, server_port=port, server_name="0.0.0.0")

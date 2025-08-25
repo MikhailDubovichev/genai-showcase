@@ -139,6 +139,82 @@ def get_timeout_seconds(config: Dict[str, Any]) -> float:
     return float(timeout_ms) / 1000.0
 
 
+def get_gradio_edge_chat_url(config: Dict[str, Any]) -> str:
+    """
+    Extract the Gradio Edge Chat UI URL from the configuration.
+
+    This helper reads the URL for the edge chat UI from the configuration,
+    ensuring it includes an explicit scheme (http or https). This URL can
+    be used for documentation, startup messages, or integration with other
+    services that need to reference the Gradio UI endpoints.
+
+    Args:
+        config (Dict[str, Any]): Parsed configuration dictionary.
+
+    Returns:
+        str: The Gradio Edge Chat UI URL such as "http://localhost:7860".
+
+    Raises:
+        ValueError: If the URL is missing or does not include http/https scheme.
+    """
+    raw = str((config.get("gradio_edge_chat_url") or "")).strip()
+    if not raw:
+        raise ValueError("gradio_edge_chat_url is missing in Gradio config")
+    if not (raw.startswith("http://") or raw.startswith("https://")):
+        raise ValueError("gradio_edge_chat_url must start with http:// or https://")
+    return raw
+
+
+def get_gradio_rag_explorer_url(config: Dict[str, Any]) -> str:
+    """
+    Extract the Gradio RAG Explorer UI URL from the configuration.
+
+    This helper reads the URL for the RAG explorer UI from the configuration,
+    ensuring it includes an explicit scheme (http or https). This URL can
+    be used for documentation, startup messages, or integration with other
+    services that need to reference the Gradio UI endpoints.
+
+    Args:
+        config (Dict[str, Any]): Parsed configuration dictionary.
+
+    Returns:
+        str: The Gradio RAG Explorer UI URL such as "http://localhost:7861".
+
+    Raises:
+        ValueError: If the URL is missing or does not include http/https scheme.
+    """
+    raw = str((config.get("gradio_rag_explorer_url") or "")).strip()
+    if not raw:
+        raise ValueError("gradio_rag_explorer_url is missing in Gradio config")
+    if not (raw.startswith("http://") or raw.startswith("https://")):
+        raise ValueError("gradio_rag_explorer_url must start with http:// or https://")
+    return raw
+
+
+def get_gradio_port(url: str) -> int:
+    """
+    Extract the port number from a Gradio UI URL.
+
+    This helper parses the URL and extracts the port number for use with
+    Gradio's launch() function. It handles default ports (80 for http, 443 for https)
+    and explicit ports specified in the URL.
+
+    Args:
+        url (str): The full Gradio UI URL such as "http://localhost:7860".
+
+    Returns:
+        int: The port number to use for the Gradio server.
+    """
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.port:
+        return parsed.port
+    elif parsed.scheme == "https":
+        return 443
+    else:
+        return 80
+
+
 def build_url(base: str, path: str) -> str:
     """
     Build a request URL by joining a normalized base and a path.

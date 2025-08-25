@@ -1,5 +1,7 @@
 {
   "edge_api_base_url": "http://localhost:8080",
   "http_timeout_ms": 40000,
-  "cloud_rag_base_url": "http://localhost:8000"
+  "cloud_rag_base_url": "http://localhost:8000",
+  "gradio_edge_chat_url": "http://localhost:7860",
+  "gradio_rag_explorer_url": "http://localhost:7861"
 }
