@@ -1,0 +1,4 @@
+{
+  "edge_api_base_url": "http://localhost:8080",
+  "http_timeout_ms": 40000
+}

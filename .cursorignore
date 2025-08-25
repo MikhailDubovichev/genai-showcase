@@ -7,7 +7,6 @@
 # -----------------------------------------------------------------------------
 
 # Focus on cloud-rag + edge together — ignore only gradio and infra
-apps/gradio/**
 infra/**
 
 # General heavy/noise files and directories (keep context small and clean)

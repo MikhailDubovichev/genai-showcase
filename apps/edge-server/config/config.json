@@ -4,7 +4,7 @@
         "api_version": "v11",
         "host": "example.smart-home-integrator.net",
         "service_location_id": 1000299,
-        "timeout": 5,
+        "timeout": 20,
         "endpoints": {
             "login": "/api/v11/login",
             "smart_devices": "/api/v11/servicelocation/{service_location_id}/homecontrol/smart/devices",
@@ -24,7 +24,7 @@
         "timeout": 30,
         "models": {
             "classification": {
-                "name": "meta-llama/Meta-Llama-3.1-405B-Instruct",
+                "name": "Qwen/Qwen3-30B-A3B",
                 "settings": {
                     "max_tokens": 10,
                     "temperature": 0.2,
@@ -80,6 +80,6 @@
     "llm_error_messages": {
         "json_parse_fallback": "I apologize, but I encountered an issue formatting my response. Please try your request again."
     },
-    "features": { "energy_efficiency_rag_enabled": true },
+    "features": { "energy_efficiency_rag_enabled": false },
     "cloud_rag": { "base_url": "http://localhost:8000" }
 } 
