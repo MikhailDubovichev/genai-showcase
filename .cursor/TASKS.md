@@ -48,7 +48,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] `infra/compose/docker-compose.yml`: services for edge, cloud, gradio UIs; volumes for `faiss_index/` and `data/db.sqlite`
 - [X] Script wiring for `cloud-rag/scripts/seed_index.py`
 - [X] README: env vars (`LANGFUSE_*`), compose run, seeding FAISS, starting Gradio, feature flag toggle, feedback sync privacy note
-- [ ] Small DX niceties: Compose profiles (e.g., `ui`, `all`); healthchecks (wait for cloud before RAG explorer); structured logging
+- [X] Healthchecks: wait for cloud before RAG explorer
 
 ## M9 — Tests (smoke-level)
 - [ ] Cloud: `/api/rag/answer` returns valid JSON; simple success case
