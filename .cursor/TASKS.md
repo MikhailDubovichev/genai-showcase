@@ -45,7 +45,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] RAG Explorer (`apps/gradio/rag_explorer/app.py`): textbox → Cloud `/api/rag/answer`; show retrieved chunks and final JSON (config `CLOUD_RAG_BASE_URL`)
 
 ## M8 — Compose and DX
-- [ ] `infra/compose/docker-compose.yml`: services for edge, cloud, gradio UIs; volumes for `faiss_index/` and `data/db.sqlite`
+- [X] `infra/compose/docker-compose.yml`: services for edge, cloud, gradio UIs; volumes for `faiss_index/` and `data/db.sqlite`
 - [ ] Script wiring for `cloud-rag/scripts/seed_index.py`
 - [ ] README: env vars (`LANGFUSE_*`), compose run, seeding FAISS, starting Gradio, feature flag toggle, feedback sync privacy note
 - [ ] Small DX niceties: Compose profiles (e.g., `ui`, `all`); healthchecks (wait for cloud before RAG explorer); structured logging

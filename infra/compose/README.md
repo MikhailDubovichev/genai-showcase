@@ -1,0 +1,152 @@
+# Docker Compose Infrastructure
+
+This directory contains the Docker Compose setup for the complete GenAI Showcase stack.
+
+## Quick Start
+
+```bash
+# Generate .env file from app configurations (recommended)
+python generate_env.py
+
+# Start all services
+docker compose up --build
+
+# Or run in background
+docker compose up --build -d
+```
+
+## Services
+
+| Service | Default Port | Description |
+|---------|--------------|-------------|
+| edge-server | 8080 | FastAPI server for smart device control |
+| cloud-rag | 8000 | RAG service with vector search |
+| gradio-chat | 7860 | Chat UI for edge server |
+| gradio-rag-explorer | 7861 | RAG explorer UI |
+
+## Dynamic Configuration
+
+### Option 1: Auto-generate from configs (Recommended)
+
+```bash
+# This reads from your app config.json files and creates .env
+python generate_env.py
+```
+
+The script reads ports from:
+- `apps/gradio/config/config.json`
+- `apps/edge-server/config/config.json` (if needed)
+
+### Option 2: Manual .env file
+
+Create a `.env` file manually:
+
+```bash
+# .env
+EDGE_SERVER_PORT=8080
+CLOUD_RAG_PORT=8000
+GRADIO_CHAT_PORT=7860
+GRADIO_RAG_EXPLORER_PORT=7861
+```
+
+### Option 3: Environment variables
+
+Set environment variables before running:
+
+```bash
+export EDGE_SERVER_PORT=9090
+export CLOUD_RAG_PORT=9000
+docker compose up --build
+```
+
+## Persistent Data
+
+The setup includes persistent volumes for:
+
+- **edge-data**: Conversation history and feedback sync state
+- **faiss-index**: FAISS vector indices for similarity search
+- **db-data**: SQLite database for feedback and evaluation queue
+
+Data survives container restarts and can be inspected with:
+
+```bash
+docker volume ls
+docker volume inspect infra-compose-edge-data
+```
+
+## Development Workflow
+
+```bash
+# 1. Make changes to app configs
+# 2. Regenerate .env if needed
+python generate_env.py
+
+# 3. Rebuild and restart
+docker compose down
+docker compose up --build
+
+# 4. View logs
+docker compose logs -f [service-name]
+
+# 5. Access services
+# Edge server: http://localhost:8080/docs
+# Cloud RAG: http://localhost:8000/health
+# Gradio Chat: http://localhost:7860
+# RAG Explorer: http://localhost:7861
+```
+
+## Troubleshooting
+
+### Port conflicts
+```bash
+# Check what's using ports
+lsof -i :8080
+
+# Use different ports
+export EDGE_SERVER_PORT=9090
+export CLOUD_RAG_PORT=9000
+```
+
+### Clean restart
+```bash
+# Remove containers and volumes (⚠️  loses data)
+docker compose down -v
+
+# Remove everything including images
+docker compose down --rmi all -v
+```
+
+### View service health
+```bash
+# Check all services
+docker compose ps
+
+# Check logs
+docker compose logs edge-server
+```
+
+## Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐
+│  Gradio UIs     │────│   Edge Server    │
+│  (Ports 7860+)  │    │   (Port 8080)    │
+└─────────────────┘    └──────────────────┘
+                                │
+                ┌───────────────┼───────────────┐
+                │               │               │
+        ┌───────▼────────┐  ┌───▼─────────┐    │
+        │ Cloud RAG      │  │   Volumes   │    │
+        │ (Port 8000)    │  │ - FAISS     │    │
+        │                 │  │ - SQLite   │    │
+        └─────────────────┘  │ - User Data│    │
+                │            └────────────┘    │
+                └─────────────────────────────┘
+```
+
+## Next Steps
+
+1. **Create Dockerfiles** for each service (M8 Step 2)
+2. **Test the stack** with your applications
+3. **Add nginx reverse proxy** for production deployment
+4. **Configure monitoring** with Prometheus/Grafana

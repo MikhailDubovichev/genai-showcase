@@ -1,0 +1,94 @@
+
+# GenAI Showcase - Full Stack Docker Compose
+# This file defines the complete multi-service setup for the GenAI Showcase,
+# including the edge server, cloud RAG service, and Gradio UIs with persistent data volumes.
+#
+# Ports and URLs can be customized via environment variables or .env file.
+# To make them dynamic from your app configs, run:
+#   python generate_env.py
+#
+# This will read ports from:
+#   - apps/gradio/config/config.json (gradio_edge_chat_url, gradio_rag_explorer_url, etc.)
+#   - apps/edge-server/config/config.json (if needed)
+#
+# The generated .env file will contain variables like:
+#   EDGE_SERVER_PORT=8080
+#   CLOUD_RAG_PORT=8000
+#   GRADIO_CHAT_PORT=7860
+#   GRADIO_RAG_EXPLORER_PORT=7861
+
+services:
+  # Edge FastAPI server for smart device control and energy efficiency
+  # Handles device management, conversation history, and feedback synchronization
+  edge-server:
+    build:
+      context: ../../apps/edge-server
+      dockerfile: Dockerfile  # Will be created in next step
+    ports:
+      - "${EDGE_SERVER_PORT:-8080}:8080"
+    env_file:
+      - ../../.env
+    volumes:
+      - edge-data:/app/user_data  # Persistent storage for conversation history and feedback sync state
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cloud RAG service for Retrieval Augmented Generation
+  # Provides AI-powered question answering with vector similarity search
+  cloud-rag:
+    build:
+      context: ../../apps/cloud-rag
+      dockerfile: Dockerfile  # Will be created in next step
+    ports:
+      - "${CLOUD_RAG_PORT:-8000}:8000"
+    env_file:
+      - ../../.env
+    volumes:
+      - faiss-index:/app/faiss_index  # FAISS vector index for similarity search persistence
+      - db-data:/app/data            # SQLite database for feedback storage and evaluation queue
+    depends_on:
+      - edge-server
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Gradio Chat UI for Edge Server
+  # Web interface for interacting with the edge FastAPI server
+  # Provides chat interface with latency monitoring and JSON transparency
+  gradio-chat:
+    build:
+      context: ../../apps/gradio
+      dockerfile: Dockerfile  # Will be created in next step
+    ports:
+      - "${GRADIO_CHAT_PORT:-7860}:7860"
+    command: python chat/edge_chat.py
+    depends_on:
+      - edge-server
+    environment:
+      - GRADIO_SERVER_PORT=7860
+
+  # Gradio RAG Explorer UI for Cloud Service
+  # Web interface for exploring the cloud RAG service
+  # Shows retrieved chunks, similarity scores, and raw JSON responses
+  gradio-rag-explorer:
+    build:
+      context: ../../apps/gradio
+      dockerfile: Dockerfile  # Will be created in next step
+    ports:
+      - "${GRADIO_RAG_EXPLORER_PORT:-7861}:7861"
+    command: python rag_explorer/rag_explorer.py
+    depends_on:
+      - cloud-rag
+    environment:
+      - GRADIO_SERVER_PORT=7861
+
+# Persistent volumes for data that must survive container restarts
+volumes:
+  edge-data:      # Stores edge server conversation history and feedback sync checkpoints
+  faiss-index:    # Stores FAISS vector indices for efficient similarity search
+  db-data:        # Stores SQLite database for feedback and evaluation queue persistence
