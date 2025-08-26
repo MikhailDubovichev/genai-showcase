@@ -54,5 +54,5 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Cloud: `/api/rag/answer` returns valid JSON; simple success case
 - [X] Cloud: relevance evaluator returns float in [0,1]
 - [X] Cloud: `/api/feedback/sync` upserts and reports accepted/duplicates
-- [ ] Edge: flag off → local LLM path
+- [X] Edge: flag off → local LLM path
 - [ ] Edge: flag on → cloud path; simulated timeout → fallback path
