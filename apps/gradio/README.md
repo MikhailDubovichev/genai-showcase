@@ -36,6 +36,40 @@ pyproject.toml     # Python project for Gradio UIs
 poetry.lock        # Locked dependencies
 ```
 
+## Project Structure Rationale
+
+### Why One Poetry Project for Both UIs?
+
+Both Gradio UIs are managed under a single Poetry project for the following reasons:
+
+**Shared Technology Stack:**
+- Both UIs use the same core dependency: `gradio`
+- Consistent Python version requirements and environment
+- Same deployment and dependency management approach
+
+**Shared Configuration & Utilities:**
+- Both UIs read from the same `config/config.json`
+- Shared utility functions in `shared/config.py` for URL building, port extraction, and validation
+- Consistent configuration patterns across both applications
+
+**Related Functionality:**
+- Both are frontend interfaces serving different backends
+- Similar user interaction patterns and error handling
+- Same architectural layer (presentation/UI) in the system
+
+**Deployment Benefits:**
+- Single `poetry install` for both UIs
+- Consistent dependency versions across both applications
+- Easier maintenance and updates
+- Can be deployed together as one unit
+
+**Comparison with Other Services:**
+- **edge-server**: Separate FastAPI backend service
+- **cloud-rag**: Separate RAG backend service
+- **gradio**: Single frontend project containing multiple UIs
+
+This structure reflects the architectural separation: backend services are separate (edge-server, cloud-rag) while frontend interfaces are consolidated (gradio).
+
 ## Applications
 
 ### Edge Chat UI (`chat/edge_chat.py`)
