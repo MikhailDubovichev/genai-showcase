@@ -74,6 +74,35 @@ docker volume ls
 docker volume inspect infra-compose-edge-data
 ```
 
+## Seeding the FAISS Index
+
+Before running the full stack, seed the vector store for RAG:
+
+```bash
+# Seed the FAISS index with training data
+docker compose --profile seed run --rm seed-index
+```
+
+### What seeding does:
+- Builds FAISS index from `apps/cloud-rag/rag/data/seed/` snippets
+- Saves index files to the `faiss-index` volume
+- Creates `manifest.json` with index metadata
+- Sets up the vector store for RAG retrieval
+
+### Idempotency:
+- Safe to run multiple times
+- Skips if `manifest.json` exists (won't rebuild unnecessarily)
+- Use `--rm` to clean up the seeding container after completion
+
+### After seeding:
+```bash
+# Run the full stack
+docker compose up --build
+
+# Cloud service starts and uses the seeded FAISS index
+# RAG endpoints will have data for similarity search
+```
+
 ## Development Workflow
 
 ```bash
@@ -81,14 +110,16 @@ docker volume inspect infra-compose-edge-data
 # 2. Regenerate .env if needed
 python generate_env.py
 
-# 3. Rebuild and restart
-docker compose down
+# 3. Seed the FAISS index (first time or when data changes)
+docker compose --profile seed run --rm seed-index
+
+# 4. Start the full stack
 docker compose up --build
 
-# 4. View logs
+# 5. View logs
 docker compose logs -f [service-name]
 
-# 5. Access services
+# 6. Access services
 # Edge server: http://localhost:8080/docs
 # Cloud RAG: http://localhost:8000/health
 # Gradio Chat: http://localhost:7860

@@ -49,6 +49,7 @@ services:
     volumes:
       - faiss-index:/app/faiss_index  # FAISS vector index for similarity search persistence
       - db-data:/app/data            # SQLite database for feedback storage and evaluation queue
+      - seed-data:/app/rag/data/seed # Seed data for FAISS index building
     depends_on:
       - edge-server
     healthcheck:
@@ -87,8 +88,24 @@ services:
     environment:
       - GRADIO_SERVER_PORT=7861
 
+  # One-off job to build FAISS index from seed data
+  # Builds vector index for RAG retrieval before starting services
+  seed-index:
+    build:
+      context: ../../apps/cloud-rag
+      dockerfile: Dockerfile  # Will be created in next step
+    command: python scripts/seed_index.py
+    volumes:
+      - faiss-index:/app/faiss_index  # FAISS = Facebook AI Similarity Search output
+      - seed-data:/app/rag/data/seed  # Input data directory
+    depends_on:
+      - cloud-rag
+    profiles:
+      - seed  # Run with: docker compose --profile seed run --rm seed-index
+
 # Persistent volumes for data that must survive container restarts
 volumes:
   edge-data:      # Stores edge server conversation history and feedback sync checkpoints
   faiss-index:    # Stores FAISS vector indices for efficient similarity search
   db-data:        # Stores SQLite database for feedback and evaluation queue persistence
+  seed-data:      # Stores seed data for FAISS index building
