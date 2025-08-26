@@ -52,6 +52,7 @@ poetry run python -m scripts.seed_index
 
 4) Run the server
 ```
+# Port is dynamic; set CLOUD_RAG_PORT or use Compose (recommended)
 CLOUD_RAG_PORT=8000 poetry run python main.py
 ```
 
@@ -78,12 +79,14 @@ curl -s -X POST http://localhost:8000/api/rag/answer \
 
 ## Project structure (cloud)
 ```
-api/            # FastAPI routers (health, rag)
+api/            # FastAPI routers (health, rag, feedback)
 config/         # CONFIG/ENV loader and system prompt
 providers/      # Nebius embeddings & LLM providers (LangChain integrations)
 rag/            # Chain (retriever → prompt → LLM → validator) and seed data
 schemas/        # Pydantic response schema matching the edge contract
 scripts/        # CLI utilities (e.g., seed_index.py)
+services/       # SQLite stores (feedback, eval queue) and processors
+eval/           # Evaluator and golden-run CLI
 ```
 
 ## Running with Compose
@@ -94,14 +97,14 @@ For a complete development environment, use Docker Compose from the project root
 # From project root
 cd infra/compose
 
-# Generate .env file from app configs
+# Generate .env file from app configs (dynamic ports)
 python generate_env.py
 
 # Start the full stack (edge + cloud + gradio UIs)
 docker compose up --build
 ```
 
-The cloud RAG service will be available at `http://localhost:8000` with all dependencies properly configured.
+The cloud RAG service will be available (default `http://localhost:8000`, port may differ if overridden) with all dependencies properly configured. Compose waits for service health before dependent UIs start.
 
 ## Seeding FAISS
 
@@ -171,6 +174,11 @@ curl -X POST http://localhost:8000/api/rag/answer \
   ]
 }
 ```
+
+## Tests (M9, smoke level)
+- RAG JSON: `poetry run pytest apps/cloud-rag/tests/test_rag_api.py -v`
+- Evaluator range: `poetry run pytest apps/cloud-rag/tests/test_relevance_evaluator.py -v`
+- Feedback upsert/duplicates: `poetry run pytest apps/cloud-rag/tests/test_feedback_sync.py -v`
 
 ## Notes
 - This service mirrors edge conventions (verbose docstrings, clear contracts).

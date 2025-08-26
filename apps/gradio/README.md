@@ -25,6 +25,14 @@ poetry run python rag_explorer/rag_explorer.py
 ```
 UI will be available at `http://localhost:7861`
 
+Alternatively, run via Docker Compose (recommended for full stack):
+```bash
+cd infra/compose
+python generate_env.py
+docker compose up --build
+# Ports are dynamic via .env
+```
+
 ## Directory structure
 
 ```
@@ -102,6 +110,11 @@ Example `config/config.json`:
   "gradio_rag_explorer_url": "http://localhost:7861"
 }
 ```
+
+UIs read these values to target local or remote services; change here to point to staging or prod.
+
+## Healthchecks
+- When running via Compose, UIs rely on service healthchecks for backend readiness (e.g., RAG Explorer waits for cloud-rag to be healthy). Ports are dynamic via `.env`.
 
 ## Getting started (detailed)
 
