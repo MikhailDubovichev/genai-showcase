@@ -51,7 +51,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Healthchecks: wait for cloud before RAG explorer
 
 ## M9 — Tests (smoke-level)
-- [ ] Cloud: `/api/rag/answer` returns valid JSON; simple success case
+- [X] Cloud: `/api/rag/answer` returns valid JSON; simple success case
 - [ ] Cloud: relevance evaluator returns float in [0,1]
 - [ ] Cloud: `/api/feedback/sync` upserts and reports accepted/duplicates
 - [ ] Edge: flag off → local LLM path
