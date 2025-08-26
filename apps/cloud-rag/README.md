@@ -2,6 +2,28 @@
 
 This service is the cloud-side Retrieval-Augmented Generation (RAG) API that complements the edge server. It retrieves context from a FAISS vector index, renders a strict JSON prompt, calls a Nebius-backed LLM, and validates the response against a shared schema so the edge can consume it safely.
 
+## Environment Variables
+
+The cloud RAG service requires the following environment variables:
+
+### Required
+- **`NEBIUS_API_KEY`**: Your Nebius API key for LLM and embeddings access
+
+### Optional (for observability)
+- **`LANGFUSE_PUBLIC_KEY`**: Public key for LangFuse tracing
+- **`LANGFUSE_SECRET_KEY`**: Secret key for LangFuse tracing and evaluation
+
+### Setting Environment Variables
+```bash
+# Option 1: From repo root .env file (recommended)
+set -a; source .env; set +a
+
+# Option 2: Export explicitly
+export NEBIUS_API_KEY="<your_nebius_key>"
+export LANGFUSE_PUBLIC_KEY="<your_langfuse_public_key>"
+export LANGFUSE_SECRET_KEY="<your_langfuse_secret_key>"
+```
+
 ## Quick start (macOS, Poetry)
 
 1) Install dependencies (package mode)
@@ -62,6 +84,92 @@ providers/      # Nebius embeddings & LLM providers (LangChain integrations)
 rag/            # Chain (retriever → prompt → LLM → validator) and seed data
 schemas/        # Pydantic response schema matching the edge contract
 scripts/        # CLI utilities (e.g., seed_index.py)
+```
+
+## Running with Compose
+
+For a complete development environment, use Docker Compose from the project root:
+
+```bash
+# From project root
+cd infra/compose
+
+# Generate .env file from app configs
+python generate_env.py
+
+# Start the full stack (edge + cloud + gradio UIs)
+docker compose up --build
+```
+
+The cloud RAG service will be available at `http://localhost:8000` with all dependencies properly configured.
+
+## Seeding FAISS
+
+### Via Docker Compose (Recommended)
+```bash
+# One-time setup for vector index
+docker compose --profile seed run --rm seed-index
+```
+
+### Via Poetry (Alternative)
+```bash
+# Traditional method
+cd apps/cloud-rag
+poetry run python scripts/seed_index.py
+```
+
+### What seeding does:
+- Builds FAISS vector index from text snippets in `rag/data/seed/`
+- Creates embeddings using Nebius API
+- Saves index files to `faiss_index/` directory
+- Generates `manifest.json` with metadata
+- **Idempotent**: Safe to run multiple times
+
+### Seed Data
+Add text files to `apps/cloud-rag/rag/data/seed/`:
+```
+standby_power.txt
+energy_monitoring.txt
+smart_devices.txt
+```
+
+## Gradio Integration
+
+The cloud RAG service integrates with the Gradio RAG Explorer UI:
+
+### RAG Explorer Features
+- **Question input**: Send natural language questions to `/api/rag/answer`
+- **Retrieved chunks**: View the top-K most relevant document snippets
+- **Similarity scores**: See relevance scores for each retrieved chunk
+- **Raw JSON**: Inspect the complete API response
+- **Latency monitoring**: Track response times
+
+### API Usage
+```bash
+# The RAG Explorer calls this endpoint
+curl -X POST http://localhost:8000/api/rag/answer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How to reduce standby power?",
+    "interactionId": "uuid-123",
+    "topK": 3
+  }'
+```
+
+### Response Format
+```json
+{
+  "message": "Reduce standby power by unplugging idle devices...",
+  "interactionId": "uuid-123",
+  "type": "text",
+  "content": [
+    {
+      "sourceId": "standby_power.txt#0",
+      "chunk": "Standby power can be reduced by...",
+      "score": 0.87
+    }
+  ]
+}
 ```
 
 ## Notes

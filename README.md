@@ -54,15 +54,75 @@ PRD.md                   # Product Requirements Document (kept up-to-date)
 Status:
 - Edge server is stable; it exposes `/api/prompt`, `/api/context`, `/api/feedback/*`, and `/metrics`.
 - Cloud RAG is implemented and integrated with the edge via a feature flag and a shared HTTP client.
-- Gradio UIs and compose files will be added in later milestones.
+- Gradio UIs are implemented and integrated with both services.
+- Docker Compose infrastructure is ready for the full stack with persistent volumes.
 
-Delivered milestones (M1–M6):
+Delivered milestones (M1–M8):
 - M1: Monorepo created; existing repo moved into `apps/edge-server/`; `.cursorignore` added.
 - M2: Cloud RAG MVP (FastAPI skeleton, config/env loader, strict JSON schema/prompt, RAG chain, FAISS seeding script, `/api/rag/answer`).
 - M3: Minimal LangFuse (client init on startup; per‑request trace with `interactionId`; basic metadata).
 - M4: Edge integration (feature flag `features.energy_efficiency_rag_enabled`; shared HTTP client; cloud‑first with local fallback).
 - M5: Feedback sync (edge daily APScheduler job; cloud `/api/feedback/sync` dedupes to SQLite; attaches `user_feedback` score in LangFuse).
 - M6: Minimal evaluator (LLM‑as‑judge relevance; enqueue artifacts post‑answer; offline processor computes scores and logs to LangFuse; golden‑run CLI).
+- M7: Gradio UIs (Chat UI for edge server; RAG Explorer for cloud service with chunk visualization).
+- M8: Compose infrastructure (docker-compose.yml with services, volumes, and dynamic config; seeding script integration; comprehensive documentation).
+
+## Quick Start (Monorepo)
+
+### Prerequisites
+- **Docker Desktop** installed and running
+- **`.env` file** in project root with required environment variables:
+  - `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (for tracing and evaluation)
+  - `NEBIUS_API_KEY` (for LLM and embeddings)
+
+### Getting Started
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd genai-showcase
+   ```
+
+2. **Set up environment**
+   ```bash
+   # Create .env file with your API keys
+   cp .env.example .env  # If example exists, or create manually
+   # Edit .env with your actual keys
+   ```
+
+3. **Seed the FAISS index** (one-time setup)
+   ```bash
+   cd infra/compose
+   python generate_env.py
+   docker compose --profile seed run --rm seed-index
+   ```
+
+4. **Start the full stack**
+   ```bash
+   docker compose up --build
+   ```
+
+5. **Access the services**
+   - Edge server: http://localhost:8080/docs
+   - Cloud RAG: http://localhost:8000/health
+   - Gradio Chat: http://localhost:7860
+   - RAG Explorer: http://localhost:7861
+
+## Services Overview
+
+### Edge Server (Port 8080)
+- **Purpose**: Lightweight FastAPI app for on-device classification and pipelines
+- **Features**: Smart device control, energy efficiency advice, conversation history
+- **Integration**: Calls cloud RAG service when feature flag is enabled
+- **Fallback**: Gracefully falls back to local LLM if cloud is unavailable
+
+### Cloud RAG Service (Port 8000)
+- **Purpose**: Retrieval-Augmented Generation with vector similarity search
+- **Features**: FAISS-based vector search, Nebius LLM integration, feedback evaluation
+- **Data**: Persists feedback to SQLite, runs offline evaluator for relevance scoring
+
+### Gradio UIs
+- **Chat UI (Port 7860)**: Interface for the edge server with latency monitoring
+- **RAG Explorer (Port 7861)**: Interface for the cloud RAG service showing retrieved chunks
 
 ## How to run (macOS, Poetry, absolute paths)
 
@@ -145,6 +205,47 @@ poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag run \
 poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag run \
   python -m eval.run_eval /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag/eval/data/golden.jsonl
 ```
+
+## Feature Toggle
+
+### Cloud-First RAG Mode
+Control whether the edge server uses cloud RAG or local LLM for energy efficiency questions:
+
+**Enable cloud-first mode:**
+```json
+// apps/edge-server/config/config.json
+{
+  "features": {
+    "energy_efficiency_rag_enabled": true
+  },
+  "cloud_rag": {
+    "base_url": "http://localhost:8000"
+  }
+}
+```
+
+**Disable for local-only mode:**
+```json
+{
+  "features": {
+    "energy_efficiency_rag_enabled": false
+  }
+}
+```
+
+**Behavior:**
+- **Enabled**: Edge calls cloud RAG first, falls back to local LLM on error/timeout
+- **Disabled**: Edge uses local LLM only (default behavior)
+
+## Privacy Note
+
+### Feedback Sync and Data Handling
+- **Edge server** collects conversation feedback and sends it to cloud daily via APScheduler
+- **Anonymization**: Only `interactionId` (UUID), question content, and feedback scores are sent
+- **No personal data**: No user emails, IP addresses, or personal identifiers are transmitted
+- **Storage**: Feedback stored in cloud SQLite database for evaluation and model improvement
+- **LangFuse integration**: Feedback scores attached to traces for performance monitoring
+- **Local control**: Edge server controls what feedback is sent; can be disabled by removing API keys
 
 ## Developer workflow (Cursor)
 

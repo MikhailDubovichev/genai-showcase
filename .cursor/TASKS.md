@@ -46,8 +46,8 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M8 — Compose and DX
 - [X] `infra/compose/docker-compose.yml`: services for edge, cloud, gradio UIs; volumes for `faiss_index/` and `data/db.sqlite`
-- [ ] Script wiring for `cloud-rag/scripts/seed_index.py`
-- [ ] README: env vars (`LANGFUSE_*`), compose run, seeding FAISS, starting Gradio, feature flag toggle, feedback sync privacy note
+- [X] Script wiring for `cloud-rag/scripts/seed_index.py`
+- [X] README: env vars (`LANGFUSE_*`), compose run, seeding FAISS, starting Gradio, feature flag toggle, feedback sync privacy note
 - [ ] Small DX niceties: Compose profiles (e.g., `ui`, `all`); healthchecks (wait for cloud before RAG explorer); structured logging
 
 ## M9 — Tests (smoke-level)
