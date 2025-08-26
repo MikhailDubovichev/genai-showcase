@@ -19,7 +19,8 @@
     "chunk_size": 1000,
     "chunk_overlap": 150
   },
-  "langfuse": { "host": "https://cloud.langfuse.com" }
+  "langfuse": { "host": "https://cloud.langfuse.com" },
+  "port": 8000
 }
 
 

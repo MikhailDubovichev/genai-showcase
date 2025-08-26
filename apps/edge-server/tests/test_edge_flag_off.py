@@ -23,21 +23,16 @@ import requests
 
 def get_base_url() -> str:
     """
-    Get the base URL for the edge server using environment variable configuration.
+    Get the base URL for the edge server using dynamic configuration.
 
-    This helper function reads the service port from the EDGE_SERVER_PORT environment
-    variable to ensure tests use the same port as the running service. The edge server
-    typically receives its port configuration via environment variables rather than
-    storing it in config.json, so this function focuses on environment-based port
-    resolution with a sensible default.
+    This helper function reads the service port from the application configuration
+    to ensure tests use the same port as the running service. It first checks for
+    a port setting in the config.json server section, then falls back to environment variables,
+    and finally uses a default port of 8080.
 
     The dynamic URL resolution ensures that tests work correctly whether the service
-    is running on the default port (8080) or a custom port specified via the
-    EDGE_SERVER_PORT environment variable. This is crucial for CI/CD pipelines and
-    local development setups where different environments might use different ports.
-
-    The function never raises exceptions and always returns a valid localhost URL
-    with a port number.
+    is running on the default port or a custom port specified in configuration or
+    environment variables.
 
     Returns:
         str: Base URL for the edge server (e.g., "http://localhost:8080")
@@ -46,9 +41,16 @@ def get_base_url() -> str:
         >>> get_base_url()
         "http://localhost:8080"
     """
-    # Read port from environment variable (edge server doesn't store port in config.json)
-    # The edge server typically gets its port from environment variables or command line
-    port = int(os.getenv("EDGE_SERVER_PORT", "8080"))
+    # Try to read port from config.json server section
+    config_path = Path(__file__).parent.parent / "config" / "config.json"
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+            # Look for port in server section
+            port = config.get("server", {}).get("port", 8080)
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        # Fall back to environment variable or default
+        port = int(os.getenv("EDGE_SERVER_PORT", "8080"))
 
     return f"http://localhost:{port}"
 
