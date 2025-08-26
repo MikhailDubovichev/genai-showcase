@@ -3,6 +3,7 @@ name = "genai-gradio"
 version = "0.1.0"
 description = "Gradio UIs for the GenAI Showcase (edge chat, RAG explorer)."
 authors = ["Mikhail Dubovichev <mikhail.dubovichev@gmail.com>"]
+readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]

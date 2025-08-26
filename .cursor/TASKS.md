@@ -41,13 +41,14 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Golden-run: `eval/run_eval.py` reads `eval/data/golden.jsonl`, runs RAG, evaluates relevance, prints aggregate stats
 
 ## M7 — Gradio UIs (tiny demos)
-- [ ] Chat UI (`apps/gradio/chat/app.py`): textbox → Edge `/api/prompt`; show JSON + latency (config `EDGE_API_BASE_URL`)
-- [ ] RAG Explorer (`apps/gradio/rag_explorer/app.py`): textbox → Cloud `/api/rag/answer`; show retrieved chunks and final JSON (config `CLOUD_RAG_BASE_URL`)
+- [X] Chat UI (`apps/gradio/chat/app.py`): textbox → Edge `/api/prompt`; show JSON + latency (config `EDGE_API_BASE_URL`)
+- [X] RAG Explorer (`apps/gradio/rag_explorer/app.py`): textbox → Cloud `/api/rag/answer`; show retrieved chunks and final JSON (config `CLOUD_RAG_BASE_URL`)
 
 ## M8 — Compose and DX
 - [ ] `infra/compose/docker-compose.yml`: services for edge, cloud, gradio UIs; volumes for `faiss_index/` and `data/db.sqlite`
 - [ ] Script wiring for `cloud-rag/scripts/seed_index.py`
 - [ ] README: env vars (`LANGFUSE_*`), compose run, seeding FAISS, starting Gradio, feature flag toggle, feedback sync privacy note
+- [ ] Small DX niceties: Compose profiles (e.g., `ui`, `all`); healthchecks (wait for cloud before RAG explorer); structured logging
 
 ## M9 — Tests (smoke-level)
 - [ ] Cloud: `/api/rag/answer` returns valid JSON; simple success case
