@@ -56,3 +56,37 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Cloud: `/api/feedback/sync` upserts and reports accepted/duplicates
 - [X] Edge: flag off → local LLM path
 - [X] Edge: flag on → cloud path; simulated timeout → fallback path
+
+## M10 — Prompt improvements (classifier + energy efficiency)
+- [ ] Classifier prompt: upgrade `apps/edge-server/config/classification_system_prompt.txt` with clearer instructions, more examples, ambiguity handling, and domain cues
+- [ ] Energy efficiency prompt: refine `apps/cloud-rag/config/energy_efficiency_system_prompt.txt` (clarify JSON schema, safety disclaimers, deflection rules, concise style)
+- [ ] Small labeled sets: add `apps/edge-server/data/classifier_samples.jsonl` and `apps/cloud-rag/eval/data/ee_prompt_examples.jsonl`
+- [ ] Local eval scripts: quick accuracy script for classifier; JSON-adherence checker for energy prompt
+- [ ] Docs: update READMEs with guidance and acceptance checks
+
+## M11 — Multi-provider (Nebius/OpenAI) switch
+- [ ] Config: add provider toggles in `apps/cloud-rag/config/config.json` (e.g., `llm.provider`, `embeddings.provider`), and read API keys from `.env` (`NEBIUS_API_KEY`, `OPENAI_API_KEY`)
+- [ ] Providers: add `providers/openai_llm.py` and `providers/openai_embeddings.py` (LangChain integrations) mirroring Nebius factories
+- [ ] Factory switch: update provider factories to select by `CONFIG` with graceful error if key missing
+- [ ] README: document how to switch providers; examples for both
+- [ ] Smoke tests: minimal calls per provider (skip if key missing) to ensure initialization works
+
+## M12 — Hybrid retrieval with re-ranking (API unchanged)
+- [ ] Add BM25 keyword retriever (langchain-community) alongside FAISS semantic retriever
+- [ ] Config toggles: `retrieval.mode = semantic|hybrid`, `rerank.enabled = true|false`, `rerank.max_items`
+- [ ] Reranking (optional): LLM-based re-ranker using existing `evaluate_relevance` on top-N combined candidates
+- [ ] Chain update: choose path by config; keep response schema stable; surface retrieval metadata in LangFuse traces
+- [ ] Tests/Docs: smoke tests for semantic vs hybrid; README notes on trade-offs and latency
+
+## M13 — PDF ingestion for seeding
+- [ ] Add PDF loader in `apps/cloud-rag/scripts/seed_index.py` (e.g., PyPDFLoader); configurable chunking by headings/blank lines
+- [ ] Export chunks: write `faiss_index/chunks.jsonl` during seeding for BM25/hybrid reuse; update `manifest.json`
+- [ ] CLI options: allow `--input-dir` and include `.pdf` and `.txt`; keep idempotency (skip unchanged)
+- [ ] Tests: seed with a small sample PDF; ensure FAISS builds and chunks export exists
+- [ ] Docs: update cloud README with PDF instructions and caveats
+
+## M14 — Golden eval dataset expansion
+- [ ] Expand `apps/cloud-rag/eval/data/golden.jsonl` to 20–50 diverse energy-efficiency questions with context hints
+- [ ] Add rubric notes per item (what constitutes a good answer); optional difficulty tags
+- [ ] Enhance `eval/run_eval.py` to print mean/median/stddev, invalid_json_rate, and simple histograms
+- [ ] Docs: describe dataset scope, how to contribute new items, and how to interpret metrics
