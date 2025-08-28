@@ -60,8 +60,6 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M10 — Prompt improvements (classifier + energy efficiency)
 - [X] Classifier prompt: upgrade `apps/edge-server/config/classification_system_prompt.txt` with clearer instructions, more examples, ambiguity handling, and domain cues
 - [X] Energy efficiency prompt: refine `apps/cloud-rag/config/energy_efficiency_system_prompt.txt` (clarify JSON schema, safety disclaimers, deflection rules, concise style)
-- [ ] Small labeled sets: add `apps/edge-server/data/classifier_samples.jsonl` and `apps/cloud-rag/eval/data/ee_prompt_examples.jsonl`
-- [ ] Local eval scripts: quick accuracy script for classifier; JSON-adherence checker for energy prompt
 - [ ] Docs: update READMEs with guidance and acceptance checks
 
 ## M11 — Multi-provider (Nebius/OpenAI) switch
@@ -81,11 +79,13 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M13 — PDF ingestion for seeding
 - [ ] Add PDF loader in `apps/cloud-rag/scripts/seed_index.py` (e.g., PyPDFLoader); configurable chunking by headings/blank lines
 - [ ] Export chunks: write `faiss_index/chunks.jsonl` during seeding for BM25/hybrid reuse; update `manifest.json`
-- [ ] CLI options: allow `--input-dir` and include `.pdf` and `.txt`; keep idempotency (skip unchanged)
+- [ ] CLI options: allow `--input-dir` and include `.pdf` and `.txt`; idempotent vectorization using per-file content-hash manifest (only process new/changed files; skip unchanged)
 - [ ] Tests: seed with a small sample PDF; ensure FAISS builds and chunks export exists
 - [ ] Docs: update cloud README with PDF instructions and caveats
 
-## M14 — Golden eval dataset expansion
+## M14 — Datasets and evaluation scripts
+- [ ] Small labeled sets: add `apps/edge-server/data/classifier_samples.jsonl` and `apps/cloud-rag/eval/data/ee_prompt_examples.jsonl`
+- [ ] Local eval scripts: quick accuracy script for classifier; JSON-adherence checker for energy prompt
 - [ ] Expand `apps/cloud-rag/eval/data/golden.jsonl` to 20–50 diverse energy-efficiency questions with context hints
 - [ ] Add rubric notes per item (what constitutes a good answer); optional difficulty tags
 - [ ] Enhance `eval/run_eval.py` to print mean/median/stddev, invalid_json_rate, and simple histograms
