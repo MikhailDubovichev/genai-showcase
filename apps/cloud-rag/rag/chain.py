@@ -35,6 +35,7 @@ from pydantic import ValidationError
 import json as _json
 
 from schemas.energy_efficiency import EnergyEfficiencyResponse
+from config import CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -233,19 +234,45 @@ def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: 
         # Prepare context JSON for the prompt
         context_json = _format_context_items(docs)
 
+        # Decide whether to allow general-knowledge fallback when retrieval is weak
+        retrieval_cfg = (CONFIG.get("retrieval", {}) or {})
+        allow_general = bool(retrieval_cfg.get("allow_general_knowledge", False))
+        no_context = False
+        try:
+            parsed_items = json.loads(context_json)
+            no_context = not isinstance(parsed_items, list) or len(parsed_items) == 0
+        except Exception:
+            no_context = True
+
         # Simple, explicit substitution (no external templating)
+        fallback_text = (
+            "If context is missing or insufficient, you may answer briefly based on household "
+            "best practices; return an empty content array."
+            if allow_general
+            else "If context is missing or insufficient, say so briefly and return an empty content array."
+        )
+
         rendered = (
             system_prompt
             .replace("{{CONTEXT}}", context_json)
             .replace("{{INTERACTION_ID}}", interaction_id)
             .replace("{{TOP_K}}", str(top_k))
             .replace("{{QUESTION}}", question)
+            .replace("{{FALLBACK_POLICY}}", fallback_text)
         )
 
         # Prefer chat-style invocation with explicit system+user messages to improve compliance
+        if allow_general and no_context:
+            guidance = (
+                "If context is missing or insufficient, you MAY answer briefly based on general household "
+                "energy-efficiency best practices. Set content to an empty array. Return ONLY JSON."
+            )
+        else:
+            guidance = "Return ONLY one valid JSON object matching the schema."
+
         messages = [
             {"role": "system", "content": rendered},
-            {"role": "user", "content": "Return ONLY one valid JSON object matching the schema."},
+            {"role": "user", "content": guidance},
         ]
         raw = llm.invoke(messages)
         text = getattr(raw, "content", raw)

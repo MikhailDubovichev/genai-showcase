@@ -59,7 +59,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M10 — Prompt improvements (classifier + energy efficiency)
 - [X] Classifier prompt: upgrade `apps/edge-server/config/classification_system_prompt.txt` with clearer instructions, more examples, ambiguity handling, and domain cues
-- [ ] Energy efficiency prompt: refine `apps/cloud-rag/config/energy_efficiency_system_prompt.txt` (clarify JSON schema, safety disclaimers, deflection rules, concise style)
+- [X] Energy efficiency prompt: refine `apps/cloud-rag/config/energy_efficiency_system_prompt.txt` (clarify JSON schema, safety disclaimers, deflection rules, concise style)
 - [ ] Small labeled sets: add `apps/edge-server/data/classifier_samples.jsonl` and `apps/cloud-rag/eval/data/ee_prompt_examples.jsonl`
 - [ ] Local eval scripts: quick accuracy script for classifier; JSON-adherence checker for energy prompt
 - [ ] Docs: update READMEs with guidance and acceptance checks

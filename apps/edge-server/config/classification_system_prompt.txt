@@ -53,9 +53,13 @@ Few-shot examples:
 - Input: "Weather tomorrow?"
   Label: OTHER_QUERIES
 
-Output format:
-- Respond with ONLY ONE label token and NOTHING ELSE.
-- Valid outputs: DEVICE_CONTROL, ENERGY_EFFICIENCY, OTHER_QUERIES
+Output specification (STRICT):
+- Print ONLY ONE token on a single line: DEVICE_CONTROL or ENERGY_EFFICIENCY or OTHER_QUERIES
+- No quotes, no punctuation, no extra words, no markdown, no code fences.
+- Do NOT think out loud, do NOT explain your reasoning, do NOT use <think> tags.
+- Return IMMEDIATELY with just the category label.
 
-User message: {message}
-Label:
+User message:
+{message}
+
+Category:

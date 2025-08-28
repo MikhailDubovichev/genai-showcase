@@ -17,7 +17,8 @@
   "retrieval": {
     "default_top_k": 3,
     "chunk_size": 1000,
-    "chunk_overlap": 150
+    "chunk_overlap": 150,
+    "allow_general_knowledge": true
   },
   "langfuse": { "host": "https://cloud.langfuse.com" },
   "port": 8000

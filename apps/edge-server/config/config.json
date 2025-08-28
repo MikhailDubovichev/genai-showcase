@@ -24,12 +24,12 @@
         "timeout": 30,
         "models": {
             "classification": {
-                "name": "Qwen/Qwen3-30B-A3B",
+                "name": "meta-llama/Llama-3.3-70B-Instruct",
                 "settings": {
-                    "max_tokens": 10,
-                    "temperature": 0.2,
-                    "top_p": 0.9,
-                    "top_k": 50
+                    "max_tokens": 20,
+                    "temperature": 0.0,
+                    "top_p": 1.0,
+                    "top_k": 1
                 }
             },
             "device_control": {
@@ -81,5 +81,5 @@
         "json_parse_fallback": "I apologize, but I encountered an issue formatting my response. Please try your request again."
     },
     "features": { "energy_efficiency_rag_enabled": true },
-    "cloud_rag": { "base_url": "http://localhost:8000" }
+    "cloud_rag": { "base_url": "http://localhost:8000", "timeout_s": 5.0 }
 } 

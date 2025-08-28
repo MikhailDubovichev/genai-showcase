@@ -125,12 +125,15 @@ class EnergyEfficiencyPipeline(BasePipeline):
                     except Exception:
                         pass
 
+                    # Read timeout from config if available, else default to 1.5s
+                    cloud_cfg = CONFIG.get("cloud_rag", {}) or {}
+                    timeout_s = float(cloud_cfg.get("timeout_s", 1.5))
+
                     cloud_obj = post_answer_from_config(
                         question=message,
                         interaction_id=interaction_id,
                         top_k=top_k,
-                        # TODO: Move hardcoded timeout to CONFIG["cloud_rag"]["timeout_s"]
-                        timeout_s=1.5,  # short timeout to keep edge responsive
+                        timeout_s=timeout_s,
                     )
 
                     # Validate cloud response and return immediately on success

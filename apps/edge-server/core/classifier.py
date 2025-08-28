@@ -90,6 +90,9 @@ class MessageClassifier:
             category_str = response.choices[0].message.content.strip().upper()
             
             # Map to enum
+            logger.info(f"[MessageClassifier] Raw model output: '{response.choices[0].message.content.strip()}'")
+            logger.info(f"[MessageClassifier] Normalized: '{category_str}'")
+            
             if "DEVICE_CONTROL" in category_str:
                 result = MessageCategory.DEVICE_CONTROL
             elif "ENERGY_EFFICIENCY" in category_str:
