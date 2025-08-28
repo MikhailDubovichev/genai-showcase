@@ -1,79 +1,94 @@
 {
-  "integrator": {
-    "base_url": "https://example.smart-home-integrator.net",
-    "api_version": "v11",
-    "host": "example.smart-home-integrator.net",
-    "service_location_id": 1000299,
-    "timeout": 20,
-    "endpoints": {
-      "login": "/api/v11/login",
-      "smart_devices": "/api/v11/servicelocation/{service_location_id}/homecontrol/smart/devices",
-      "automations": "/api/v11/servicelocation/{service_location_id}/homecontrol/automations",
-      "device_action": "/api/v11/servicelocation/{service_location_id}/homecontrol/smart/devices/{device_id}/actions/{action}",
-      "dynamic_tariffs": "/api/v11/servicelocation/{service_location_id}/tariffs/dynamic",
-      "spot_prices": "/api/v11/spotprices/1"
+    "integrator": {
+        "base_url": "https://example.smart-home-integrator.net",
+        "api_version": "v11",
+        "host": "example.smart-home-integrator.net",
+        "service_location_id": 1000299,
+        "timeout": 20,
+        "endpoints": {
+            "login": "/api/v11/login",
+            "smart_devices": "/api/v11/servicelocation/{service_location_id}/homecontrol/smart/devices",
+            "automations": "/api/v11/servicelocation/{service_location_id}/homecontrol/automations",
+            "device_action": "/api/v11/servicelocation/{service_location_id}/homecontrol/smart/devices/{device_id}/actions/{action}",
+            "dynamic_tariffs": "/api/v11/servicelocation/{service_location_id}/tariffs/dynamic",
+            "spot_prices": "/api/v11/spotprices/1"
+        },
+        "headers": {
+            "Accept": "application/json",
+            "Connection": "keep-alive",
+            "Accept-Encoding": "gzip"
+        }
     },
-    "headers": {
-      "Accept": "application/json",
-      "Connection": "keep-alive",
-      "Accept-Encoding": "gzip"
+    "llm": {
+        "base_url": "https://api.openai.com/v1/",
+        "timeout": 30,
+        "provider": "openai",
+        "models": {
+            "classification": {
+                "name": "gpt-4o-mini",
+                "settings": {
+                    "max_tokens": 20,
+                    "temperature": 0.0,
+                    "top_p": 1.0,
+                    "top_k": 1
+                }
+            },
+            "device_control": {
+                "name": "gpt-4o",
+                "settings": {
+                    "max_tokens": 512,
+                    "temperature": 0.6,
+                    "top_p": 0.9,
+                    "top_k": 50
+                }
+            },
+            "energy_efficiency": {
+                "name": "gpt-4o",
+                "settings": {
+                    "max_tokens": 2048,
+                    "temperature": 0.7,
+                    "top_p": 0.95,
+                    "top_k": 50
+                }
+            }
+        }
+    },
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8080
+    },
+    "cors": {
+        "allow_origins": [
+            "*"
+        ]
+    },
+    "logging": {
+        "level": "INFO",
+        "file_path": "logs/ai_assistant.log",
+        "max_bytes": 5242880,
+        "backup_count": 3,
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s",
+        "date_format": "%Y-%m-%d %H:%M:%S"
+    },
+    "paths": {
+        "user_data_base_dir_name": "user_data",
+        "contexts_subdir_name": "contexts",
+        "conversations_subdir_name": "conversations",
+        "active_conversation_filename": "active_conversation.json",
+        "feedback_subdir_name": "feedback",
+        "negative_feedback_filename": "negative_feedback.json",
+        "positive_feedback_filename": "positive_feedback.json",
+        "digest_tracking_subdir_name": "digest_tracking"
+    },
+    "llm_error_messages": {
+        "json_parse_fallback": "I apologize, but I encountered an issue formatting my response. Please try your request again."
+    },
+    "features": {
+        "energy_efficiency_rag_enabled": false
+    },
+    "cloud_rag": {
+        "base_url": "http://localhost:8000",
+        "timeout_s": 0.1,
+        "timeout": 0.1
     }
-  },
-  "llm": {
-    "base_url": "https://api.openai.com/v1/",
-    "timeout": 30,
-    "provider": "openai",
-    "models": {
-      "classification": {
-        "name": "gpt-4o-mini",
-        "settings": {
-          "max_tokens": 20,
-          "temperature": 0.0,
-          "top_p": 1.0,
-          "top_k": 1
-        }
-      },
-      "device_control": {
-        "name": "gpt-4o",
-        "settings": {
-          "max_tokens": 512,
-          "temperature": 0.6,
-          "top_p": 0.9,
-          "top_k": 50
-        }
-      },
-      "energy_efficiency": {
-        "name": "gpt-4o",
-        "settings": {
-          "max_tokens": 2048,
-          "temperature": 0.7,
-          "top_p": 0.95,
-          "top_k": 50
-        }
-      }
-    }
-  },
-  "server": { "host": "0.0.0.0", "port": 8080 },
-  "cors": { "allow_origins": ["*"] },
-  "logging": {
-    "level": "INFO",
-    "file_path": "logs/ai_assistant.log",
-    "max_bytes": 5242880,
-    "backup_count": 3,
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s",
-    "date_format": "%Y-%m-%d %H:%M:%S"
-  },
-  "paths": {
-    "user_data_base_dir_name": "user_data",
-    "contexts_subdir_name": "contexts",
-    "conversations_subdir_name": "conversations",
-    "active_conversation_filename": "active_conversation.json",
-    "feedback_subdir_name": "feedback",
-    "negative_feedback_filename": "negative_feedback.json",
-    "positive_feedback_filename": "positive_feedback.json",
-    "digest_tracking_subdir_name": "digest_tracking"
-  },
-  "llm_error_messages": { "json_parse_fallback": "I apologize, but I encountered an issue formatting my response. Please try your request again." },
-  "features": { "energy_efficiency_rag_enabled": true },
-  "cloud_rag": { "base_url": "http://localhost:8000", "timeout_s": 5.0 }
 }

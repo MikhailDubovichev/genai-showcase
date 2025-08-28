@@ -71,7 +71,9 @@ def create_test_payload() -> Dict[str, Any]:
     """
     return {
         "message": "How to reduce energy consumption at home?",
-        "interactionId": "test-edge-flag-off-123"
+        "interactionId": "test-edge-flag-off-123",
+        "token": "dummy",
+        "location_id": "1000299",
     }
 
 
@@ -159,7 +161,8 @@ def test_edge_local_path_when_flag_off(temp_config):
     payload = create_test_payload()
 
     # Send POST request to the edge prompt endpoint
-    response = requests.post(endpoint, json=payload, timeout=30)
+    # /api/prompt expects query parameters (FastAPI Query), not a JSON body
+    response = requests.post(endpoint, params=payload, timeout=30)
 
     # Validate HTTP status
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
