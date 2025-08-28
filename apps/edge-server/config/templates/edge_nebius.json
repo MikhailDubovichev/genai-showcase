@@ -1,0 +1,6 @@
+{
+  "llm": {
+    "provider": "nebius",
+    "base_url": "https://api.studio.nebius.com/v1/"
+  }
+}
