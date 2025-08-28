@@ -45,7 +45,14 @@ import argparse
 import logging
 import os
 from pathlib import Path
+import sys
 from typing import Iterable, List, Tuple
+
+# Ensure app root is on sys.path so `providers` can be imported when running this
+# file directly (e.g., via Cursor's "Run Python File" or python path/to/script.py)
+_APP_ROOT = Path(__file__).resolve().parents[1]
+if str(_APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(_APP_ROOT))
 
 from providers import get_embeddings
 import json

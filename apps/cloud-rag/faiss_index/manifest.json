@@ -1,8 +1,8 @@
 {
   "model": "",
-  "config_model": "Qwen/Qwen3-Embedding-8B",
-  "dimension": 4096,
+  "config_model": "text-embedding-3-small",
+  "dimension": 1536,
   "chunk_size": 1000,
   "chunk_overlap": 150,
-  "seeded_at": "2025-08-19T08:49:09.219106+00:00"
+  "seeded_at": "2025-08-28T13:14:35.224757+00:00"
 }
