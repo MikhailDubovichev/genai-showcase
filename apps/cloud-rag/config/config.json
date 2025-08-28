@@ -4,10 +4,12 @@
     "timeout": 30,
     "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
     "temperature": 0.0,
-    "top_p": 0.95
+    "top_p": 0.95,
+    "provider": "nebius"
   },
   "embeddings": {
-    "name": "Qwen/Qwen3-Embedding-8B"
+    "name": "Qwen/Qwen3-Embedding-8B",
+    "provider": "nebius"
   },
   "paths": {
     "faiss_index_dir": "faiss_index",

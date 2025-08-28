@@ -32,6 +32,7 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, Mapping
+import logging
 
 
 def _read_env() -> Dict[str, str]:
@@ -148,6 +149,9 @@ def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
                         cfg_llm["timeout"] = int(llm_cfg.get("timeout"))
                     except Exception:
                         pass
+                # Provider toggle (added in M11 Step 1)
+                if "provider" in llm_cfg:
+                    cfg_llm["provider"] = str(llm_cfg.get("provider"))
                 cfg["llm"] = cfg_llm
 
         emb_cfg = json_cfg.get("embeddings", {})
@@ -155,6 +159,9 @@ def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
             cfg_emb = cfg.get("embeddings", {})  # type: ignore[assignment]
             if isinstance(cfg_emb, dict) and "name" in emb_cfg:
                 cfg_emb["name"] = str(emb_cfg.get("name"))
+                # Provider toggle (added in M11 Step 1)
+                if "provider" in emb_cfg:
+                    cfg_emb["provider"] = str(emb_cfg.get("provider"))
                 cfg["embeddings"] = cfg_emb
 
         paths_cfg = json_cfg.get("paths", {})
@@ -190,4 +197,87 @@ def langfuse_present() -> bool:
     """
     return bool(ENV.get("LANGFUSE_PUBLIC_KEY") and ENV.get("LANGFUSE_SECRET_KEY"))
 
+
+def get_required_env(var_name: str) -> str:
+    """
+    Read a required environment variable and fail fast if it is missing.
+
+    This helper centralizes validation of sensitive configuration values that must be
+    provided via the operating system environment ("env" comes from "environment").
+    It is used to enforce that API credentials for external providers are present at
+    process startup, which prevents deferred runtime errors deeper in the request
+    handling path. The function does not cache, normalize, or log the secret value,
+    and it never returns defaults – absence is treated as a configuration error.
+
+    Args:
+        var_name (str): The required environment variable name to fetch, e.g.,
+            "NEBIUS_API_KEY" (Nebius) or "OPENAI_API_KEY" (OpenAI – OpenAI stands for
+            Open Artificial Intelligence).
+
+    Returns:
+        str: The non‑empty value of the requested environment variable.
+
+    Raises:
+        RuntimeError: If the variable is not set or resolves to an empty string, with a
+            clear instruction to set it in the shell or .env file.
+    """
+    value = os.getenv(var_name, "")
+    if not value:
+        raise RuntimeError(
+            f"Missing required environment variable: {var_name}. Set it in your shell or .env"
+        )
+    return value
+
+
+def _validate_providers(config: Dict[str, object]) -> None:
+    """
+    Validate provider selections and required credentials based on configuration.
+
+    This function inspects the provider toggles under the `llm` and `embeddings` sections
+    of CONFIG and ensures the corresponding environment variables are present. Supported
+    providers are "nebius" and "openai" (case‑insensitive). For both LLM and embeddings in
+    this step, we enforce presence of the same key per provider:
+    - nebius → NEBIUS_API_KEY must be set
+    - openai → OPENAI_API_KEY must be set
+
+    The function emits concise INFO logs summarizing the chosen providers (without logging any
+    secrets) and raises clear exceptions on misconfiguration to fail fast at startup.
+
+    Args:
+        config (Dict[str, object]): The resolved CONFIG mapping.
+
+    Raises:
+        ValueError: If an unknown provider is configured for either section.
+        RuntimeError: If the required environment variable for a known provider is missing.
+    """
+    logger = logging.getLogger(__name__)
+
+    llm_cfg = config.get("llm", {}) if isinstance(config, dict) else {}
+    emb_cfg = config.get("embeddings", {}) if isinstance(config, dict) else {}
+
+    llm_provider = str(getattr(llm_cfg, "get", lambda *_: "nebius")("provider", "nebius")).strip().lower()
+    emb_provider = str(getattr(emb_cfg, "get", lambda *_: "nebius")("provider", "nebius")).strip().lower()
+
+    logger.info("LLM provider selected: %s", llm_provider)
+    logger.info("Embeddings provider selected: %s", emb_provider)
+
+    # Validate LLM provider
+    if llm_provider == "nebius":
+        get_required_env("NEBIUS_API_KEY")
+    elif llm_provider == "openai":
+        get_required_env("OPENAI_API_KEY")
+    else:
+        raise ValueError(f"Unsupported llm provider: {llm_provider}")
+
+    # Validate embeddings provider (same rule in this step)
+    if emb_provider == "nebius":
+        get_required_env("NEBIUS_API_KEY")
+    elif emb_provider == "openai":
+        get_required_env("OPENAI_API_KEY")
+    else:
+        raise ValueError(f"Unsupported embeddings provider: {emb_provider}")
+
+
+# Perform provider validation at import time so the app fails fast on misconfiguration.
+_validate_providers(CONFIG)
 
