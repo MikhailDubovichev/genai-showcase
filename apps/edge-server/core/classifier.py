@@ -75,6 +75,11 @@ class MessageClassifier:
         """
         try:
             model_config = CONFIG["llm"]["models"]["classification"]
+            provider = (CONFIG.get("llm", {}) or {}).get("provider", "nebius").lower()
+            extra_kwargs = {}
+            if provider != "openai":
+                extra_kwargs["extra_body"] = {"top_k": model_config["settings"]["top_k"]}
+
             response = self.client.chat.completions.create(
                 model=model_config["name"],
                 messages=[{
@@ -84,7 +89,7 @@ class MessageClassifier:
                 max_tokens=model_config["settings"]["max_tokens"],
                 temperature=model_config["settings"]["temperature"],
                 top_p=model_config["settings"]["top_p"],
-                extra_body={"top_k": model_config["settings"]["top_k"]}
+                **extra_kwargs
             )
             
             category_str = response.choices[0].message.content.strip().upper()

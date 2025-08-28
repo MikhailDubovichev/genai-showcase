@@ -210,13 +210,18 @@ def handle_tool_call(response, interaction_id: str, token: str, location_id: str
     ] + tool_results
     
     model_cfg = CONFIG["llm"]["models"]["device_control"]
+    provider = (CONFIG.get("llm", {}) or {}).get("provider", "nebius").lower()
+    extra_kwargs = {}
+    if provider != "openai":
+        extra_kwargs["extra_body"] = {"top_k": model_cfg["settings"]["top_k"]}
+
     follow_up_response = client.chat.completions.create(
         model=model_cfg["name"],
         messages=messages,
         max_tokens=model_cfg["settings"]["max_tokens"],
         temperature=model_cfg["settings"]["temperature"],
         top_p=model_cfg["settings"]["top_p"],
-        extra_body={"top_k": model_cfg["settings"]["top_k"]},
+        **extra_kwargs,
     )
     
     return follow_up_response.choices[0].message.content 

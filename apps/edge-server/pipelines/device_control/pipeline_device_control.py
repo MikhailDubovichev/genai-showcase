@@ -117,15 +117,21 @@ class DeviceControlPipeline(BasePipeline):
             )
             
             # Make initial LLM request with tools enabled
+            from config import CONFIG as EDGE_CONFIG
+            provider = (EDGE_CONFIG.get("llm", {}) or {}).get("provider", "nebius").lower()
+            extra_kwargs = {}
+            if provider != "openai":
+                extra_kwargs["extra_body"] = {"top_k": self.model_config["settings"]["top_k"]}
+
             response = self.client.chat.completions.create(
                 model=self.model_config["name"],
                 max_tokens=self.model_config["settings"]["max_tokens"],
                 temperature=self.model_config["settings"]["temperature"],
                 top_p=self.model_config["settings"]["top_p"],
-                extra_body={"top_k": self.model_config["settings"]["top_k"]},
                 messages=messages,
                 tools=self.tool_manager.get_tool_definitions(),
                 tool_choice="auto",
+                **extra_kwargs,
             )
             
             # Handle tool calls if present

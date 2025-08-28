@@ -181,6 +181,11 @@ class EnergyEfficiencyPipeline(BasePipeline):
             )
             
             # Make LLM request for energy efficiency advice
+            provider = (CONFIG.get("llm", {}) or {}).get("provider", "nebius").lower()
+            extra_kwargs = {}
+            if provider != "openai":
+                extra_kwargs["extra_body"] = {"top_k": self.model_config["settings"]["top_k"]}
+
             response = self.client.chat.completions.create(
                 model=self.model_config["name"],
                 max_tokens=self.model_config["settings"]["max_tokens"],
@@ -188,9 +193,9 @@ class EnergyEfficiencyPipeline(BasePipeline):
                 top_p=self.model_config["settings"]["top_p"],
                 # Ask the model to return a strict JSON object (OpenAI-compatible parameter)
                 response_format={"type": "json_object"},
-                extra_body={"top_k": self.model_config["settings"]["top_k"]},
                 messages=messages,
                 # Note: No tools parameter - energy efficiency is purely conversational
+                **extra_kwargs,
             )
             
             # Get the assistant response
