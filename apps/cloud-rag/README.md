@@ -79,6 +79,31 @@ curl -s -X POST http://localhost:8000/api/rag/answer \
  - Fallback behavior:
    - `retrieval.allow_general_knowledge: true|false` — when true and no chunks are retrieved, the service returns a brief, general best‑practice answer with `content: []`.
 
+### Provider switching (Nebius ↔ OpenAI)
+
+Cloud supports multiple providers via full-file templates and a simple switcher.
+
+1) Switch provider (copies template → active config):
+```
+python scripts/switch_provider.py nebius
+python scripts/switch_provider.py openai
+```
+
+2) Set environment variables (already supported):
+- Nebius: `NEBIUS_API_KEY`
+- OpenAI: `OPENAI_API_KEY`
+
+3) Restart the server to apply changes:
+```
+CLOUD_RAG_PORT=8000 poetry run python main.py
+```
+
+4) Verify selection at startup (and LangFuse traces, if enabled).
+
+Notes:
+- Templates live under `config/templates/` as `config.nebius.json` and `config.openai.json`.
+- If you switch embeddings provider, re-seed FAISS (`rm -rf faiss_index && poetry run python -m scripts.seed_index`).
+
 ## Project structure (cloud)
 ```
 api/            # FastAPI routers (health, rag, feedback)

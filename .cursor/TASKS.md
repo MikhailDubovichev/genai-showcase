@@ -69,7 +69,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Step 4 (edge config management): create `apps/edge-server/config/templates/` with provider templates, `apps/edge-server/scripts/switch_provider.py` for easy switching, and `apps/edge-server/config/README.md` documentation
 - [X] Step 5 (edge config only): add provider toggle(s) in `apps/edge-server/config/config.json` (global `llm.provider` with optional per-model override is acceptable); validate env at startup in `llm_cloud/provider.py` — no wiring changes yet
 - [X] Step 6 (edge providers wiring): update `apps/edge-server/llm_cloud/provider.py` to select Nebius/OpenAI based on config; ensure classification, device_control, and energy_efficiency models use the selected provider without changing public APIs
-- [ ] Step 7 (docs): update both READMEs with provider selection examples and required env vars for each provider
+- [X] Step 7 (docs): update both READMEs with provider selection examples and required env vars for each provider
 - [ ] Step 8 (smoke tests): minimal provider init tests for cloud and edge (skip if corresponding API key not present); keep existing behavior defaulting to Nebius
 
 ## M12 — Hybrid retrieval with re-ranking (API unchanged)

@@ -134,6 +134,33 @@ llm.models.classification.settings:
 
 These settings ensure single-token label outputs like `DEVICE_CONTROL` or `ENERGY_EFFICIENCY` without reasoning.
 
+### Provider switching (Nebius ↔ OpenAI)
+
+You can switch LLM providers using templates and a small script. The templates contain full `config.json` variants to keep switching safe and consistent.
+
+1) Switch provider (copies template → active config):
+```
+python scripts/switch_provider.py nebius
+python scripts/switch_provider.py openai
+```
+
+2) Set environment variables (already supported):
+- Nebius: `NEBIUS_API_KEY`
+- OpenAI: `OPENAI_API_KEY`
+
+3) Restart the server to apply changes:
+```
+poetry run python main.py
+```
+
+4) Verify selection in logs (INFO):
+- "LLM provider selected: nebius | base_url=https://api.studio.nebius.com/v1/"
+- or "LLM provider selected: openai | base_url=https://api.openai.com/v1"
+
+Notes:
+- Templates live under `config/templates/` and include per-model names for `classification`, `device_control`, and `energy_efficiency`.
+- The code automatically handles small provider differences; no app code changes are required when switching.
+
 ## Tests
 
 Run the test suite from this directory:
