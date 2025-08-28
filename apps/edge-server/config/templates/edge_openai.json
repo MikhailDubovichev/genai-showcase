@@ -1,6 +1,11 @@
 {
   "llm": {
     "provider": "openai",
-    "base_url": "https://api.openai.com/v1/"
+    "base_url": "https://api.openai.com/v1/",
+    "models": {
+      "classification": { "name": "gpt-4o-mini" },
+      "device_control": { "name": "gpt-4o" },
+      "energy_efficiency": { "name": "gpt-4o" }
+    }
   }
 }

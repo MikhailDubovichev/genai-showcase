@@ -1,6 +1,11 @@
 {
   "llm": {
     "provider": "nebius",
-    "base_url": "https://api.studio.nebius.com/v1/"
+    "base_url": "https://api.studio.nebius.com/v1/",
+    "models": {
+      "classification": { "name": "meta-llama/Llama-3.3-70B-Instruct" },
+      "device_control": { "name": "meta-llama/Meta-Llama-3.1-405B-Instruct" },
+      "energy_efficiency": { "name": "meta-llama/Meta-Llama-3.1-405B-Instruct" }
+    }
   }
 }

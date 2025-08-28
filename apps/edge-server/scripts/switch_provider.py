@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Edge Server Provider Switcher
+Edge Server Provider Switcher (simple copy, matches cloud behavior)
 
 Usage:
     python scripts/switch_provider.py nebius
@@ -11,6 +11,7 @@ allowing easy switching between providers without manual file editing.
 """
 
 import argparse
+import json
 import shutil
 from pathlib import Path
 
@@ -39,23 +40,12 @@ def switch_provider(provider: str) -> None:
     if not template_path.exists():
         raise FileNotFoundError(f"Template config not found: {template_path}")
 
-    # Copy template to active config
+    # Copy template to active config (overwrite)
     shutil.copy2(template_path, config_path)
 
     print(f"✅ Switched to {provider.upper()} provider")
     print(f"   Template: {template_path}")
     print(f"   Active config: {config_path}")
-
-    # Show provider info
-    import json
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-
-    llm_provider = config.get('llm', {}).get('provider', 'unknown')
-    base_url = config.get('llm', {}).get('base_url', 'unknown')
-
-    print(f"   LLM: {llm_provider}")
-    print(f"   Base URL: {base_url}")
 
     print(f"\n📝 Note: Make sure to set the appropriate API key:")
     if provider == 'nebius':
@@ -84,7 +74,7 @@ Examples:
     )
 
     args = parser.parse_args()
-    switch_provider(args.provider)
+    switch_provider(provider=args.provider)
 
 
 if __name__ == '__main__':
