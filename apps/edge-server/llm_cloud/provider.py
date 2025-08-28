@@ -1,8 +1,8 @@
 """
-provider.py – External LLM client with provider validation. Build and return a configured Nebius/OpenAI client
----------------------------------------------------------------------------------------------------------
+provider.py – External LLM client with provider routing and validation. Build and return a configured Nebius/OpenAI client
+-------------------------------------------------------------------------------------------------------------------
 In the overall data-flow this file sits at the infrastructure layer.
-It is the single place where we talk to the external LLM platform (Nebius' OpenAI-compatible endpoint).
+It is the single place where we talk to the external LLM platform (Nebius/OpenAI endpoints).
 
 Why a *provider* module?
 • Keeps third-party SDK initialisation separate from business logic.
@@ -11,14 +11,24 @@ Why a *provider* module?
   client without importing heavy objects.
 • Other internal modules (`chat.py`) simply ask for a client; they do
   not need to know about base URLs or API keys.
-• Now includes provider validation to ensure required environment variables
+• Now includes provider routing to switch between Nebius and OpenAI based on
+  CONFIG["llm"]["provider"], mirroring the cloud-rag factory pattern.
+• Includes provider validation to ensure required environment variables
   are present before attempting to build clients, following the same pattern
   as the cloud service (M11 Step 1).
 
-The validation happens at client creation time (not import time) to avoid
+The validation and routing happen at client creation time (not import time) to avoid
 failing imports during testing or when the module is loaded without running
 the full application. This keeps the module importable for testing while
 still enforcing configuration requirements at runtime.
+
+Provider routing logic:
+- "nebius": Uses Nebius-compatible API with LLM_API_KEY/NEBIUS_API_KEY
+- "openai": Uses OpenAI's official API with OPENAI_API_KEY
+- Unsupported providers raise ValueError with clear error message
+
+This design maintains backward compatibility while enabling seamless provider switching
+without changes to any calling code (classifier, pipelines, etc.).
 """
 
 import logging
@@ -131,23 +141,26 @@ def validate_env_for_provider(config: Dict) -> None:
 
 def get_client() -> OpenAI:
     """
-    Build and return a configured OpenAI client with provider validation.
+    Build and return a configured OpenAI-compatible client with provider routing.
 
-    This function first validates that the required environment variables are present
-    for the configured provider before attempting to build the client. This ensures
-    that configuration errors are caught early with clear error messages, rather than
-    failing later during actual API calls.
+    This function implements provider switching between Nebius and OpenAI based on
+    the `CONFIG["llm"]["provider"]` setting. It mirrors the cloud-rag factory pattern
+    but keeps the edge service's existing `get_client()` API unchanged to maintain
+    compatibility with all existing callers (classifier, pipelines, etc.).
 
-    The provider encapsulates all environment and configuration lookups (base URL, API key, and timeouts)
-    so that callers do not need to deal with SDK initialization details. Returning a fresh client instead of
-    a global singleton makes tests simpler (the function can be monkey‑patched) and avoids import‑time side
-    effects in production.
+    Provider selection logic:
+    - "nebius": Uses Nebius-compatible API with LLM_API_KEY or NEBIUS_API_KEY
+    - "openai": Uses OpenAI's official API with OPENAI_API_KEY
 
-    The validation step follows the same pattern as the cloud service (M11 Step 1), ensuring
-    consistency across the codebase while maintaining the edge service's existing behavior.
+    The function first validates environment variables are present (via Step 5 validation),
+    then constructs the appropriate client configuration. This ensures configuration errors
+    are caught early with clear messages, while keeping the public API stable.
+
+    Mirrors cloud-rag providers/factory.py pattern for consistency across the monorepo,
+    but simplified for edge service's single-client needs.
 
     Returns:
-        OpenAI: A ready‑to‑use client configured using `CONFIG` and `ENV` values.
+        OpenAI: A ready‑to‑use client configured for the selected provider.
 
     Raises:
         RuntimeError: If required environment variables are missing (via validation).
@@ -156,10 +169,30 @@ def get_client() -> OpenAI:
     # Validate environment before building client
     validate_env_for_provider(CONFIG)
 
+    # Read provider configuration
+    llm_config = CONFIG.get("llm", {})
+    provider = llm_config.get("provider", "nebius").strip().lower()
+
+    if provider == "nebius":
+        # Use Nebius-compatible API (existing behavior)
+        selected_var, api_key = require_any_env(["LLM_API_KEY", "NEBIUS_API_KEY"])
+        base_url = llm_config.get("base_url", "https://api.studio.nebius.com/v1/")
+        logger.info("LLM provider selected: nebius | base_url=%s", base_url)
+
+    elif provider == "openai":
+        # Use OpenAI's official API
+        selected_var, api_key = require_any_env(["OPENAI_API_KEY"])
+        base_url = "https://api.openai.com/v1"  # Override to OpenAI's endpoint
+        logger.info("LLM provider selected: openai | base_url=%s", base_url)
+
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
+
+    # Build client with provider-specific configuration
     return OpenAI(
-        base_url=CONFIG["llm"]["base_url"],
-        api_key=ENV["LLM_API_KEY"],  # Keep existing behavior for now
-        timeout=CONFIG["llm"].get("timeout", 30),  # seconds – explicit is better than implicit
+        base_url=base_url,
+        api_key=api_key,
+        timeout=llm_config.get("timeout", 30),  # seconds – explicit is better than implicit
     )
 
 
