@@ -30,8 +30,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from config import CONFIG
-from providers.nebius_embeddings import get_embeddings
-from providers.nebius_llm import get_llm
+from providers import get_embeddings, get_chat_llm
 from providers.langfuse import create_trace, update_trace_metadata
 from rag.chain import run_chain
 from services.eval_queue import enqueue_eval_item
@@ -90,8 +89,8 @@ def answer_rag(req: RAGRequest) -> JSONResponse:
         )
 
         faiss_dir = str((CONFIG.get("paths", {}) or {}).get("faiss_index_dir", "apps/cloud-rag/faiss_index"))
-        embeddings = get_embeddings()
-        llm = get_llm()
+        embeddings = get_embeddings(CONFIG)
+        llm = get_chat_llm(CONFIG)
         result_json = run_chain(
             question=req.question,
             interaction_id=req.interactionId,

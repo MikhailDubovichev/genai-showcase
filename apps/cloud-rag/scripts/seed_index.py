@@ -47,7 +47,7 @@ import os
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-from providers.nebius_embeddings import get_embeddings
+from providers import get_embeddings
 import json
 from datetime import datetime, timezone
 
@@ -179,8 +179,13 @@ def seed_index(
     docs = list(_build_documents(files, chunk_size, chunk_overlap, source_prefix))
     logger.info("Prepared %d chunks for embedding", len(docs))
 
-    embeddings = get_embeddings()
-    logger.info("Using embeddings provider: Nebius (model from CONFIG)")
+    # Use provider factory to resolve embeddings by CONFIG
+    try:
+        from config import CONFIG  # local import to avoid circulars at module import
+    except Exception:  # pragma: no cover - defensive
+        CONFIG = {}
+    embeddings = get_embeddings(CONFIG)
+    logger.info("Using embeddings provider from CONFIG")
 
     # Determine embedding dimension for manifest
     try:

@@ -7,4 +7,6 @@ logic so the rest of the codebase can depend on narrow, well-documented
 interfaces.
 """
 
+from .factory import get_chat_llm, get_embeddings
 
+__all__ = ["get_chat_llm", "get_embeddings"]
