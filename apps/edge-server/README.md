@@ -117,9 +117,22 @@ curl -X POST "http://localhost:8080/api/reset"
 ## Configuration
 
 - `config/config.json` controls server host/port, prompts, and model settings.
-- Feature flag (planned, for cloud RAG integration):
-  - `features.energy_efficiency_rag_enabled`
-  - `cloud_rag.base_url`
+- Cloud RAG integration (feature-flagged):
+  - `features.energy_efficiency_rag_enabled: true|false`
+  - `cloud_rag.base_url: "http://localhost:8000"`
+  - `cloud_rag.timeout_s: 5.0` (default; adjust for your environment)
+  
+### Classifier determinism
+
+```
+llm.models.classification.settings:
+  max_tokens: 20
+  temperature: 0.0
+  top_p: 1.0
+  top_k: 1
+```
+
+These settings ensure single-token label outputs like `DEVICE_CONTROL` or `ENERGY_EFFICIENCY` without reasoning.
 
 ## Tests
 

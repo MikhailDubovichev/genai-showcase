@@ -76,6 +76,8 @@ curl -s -X POST http://localhost:8000/api/rag/answer \
 - `NEBIUS_API_KEY` must be present in the environment.
 - FAISS index path defaults to `faiss_index` (relative to this folder).
 - A `faiss_index/manifest.json` is written during seeding with embedding model and dimension. If you change the embedding model, delete/reseed the index.
+ - Fallback behavior:
+   - `retrieval.allow_general_knowledge: true|false` — when true and no chunks are retrieved, the service returns a brief, general best‑practice answer with `content: []`.
 
 ## Project structure (cloud)
 ```
