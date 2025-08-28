@@ -1,0 +1,27 @@
+{
+  "llm": {
+    "base_url": "https://api.openai.com/v1",
+    "timeout": 30,
+    "model": "gpt-4",
+    "temperature": 0.0,
+    "top_p": 0.95,
+    "provider": "openai"
+  },
+  "embeddings": {
+    "name": "text-embedding-3-small",
+    "provider": "openai"
+  },
+  "paths": {
+    "faiss_index_dir": "faiss_index",
+    "seed_data_dir": "rag/data/seed",
+    "db_path": "data/db.sqlite"
+  },
+  "retrieval": {
+    "default_top_k": 3,
+    "chunk_size": 1000,
+    "chunk_overlap": 150,
+    "allow_general_knowledge": true
+  },
+  "langfuse": { "host": "https://cloud.langfuse.com" },
+  "port": 8000
+}
