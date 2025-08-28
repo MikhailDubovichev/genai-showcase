@@ -65,10 +65,12 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M11 — Multi-provider (Nebius/OpenAI) switch
 - [X] Step 1 (cloud config only): add provider toggles in `apps/cloud-rag/config/config.json` (e.g., `llm.provider`, `embeddings.provider`); validate env keys at startup (`NEBIUS_API_KEY` or `OPENAI_API_KEY`) — no provider code yet
 - [X] Step 2 (cloud providers): add `apps/cloud-rag/providers/openai_llm.py` and `apps/cloud-rag/providers/openai_embeddings.py`; update cloud provider factory to switch by `CONFIG` with clear errors if keys missing
-- [ ] Step 3 (edge config only): add provider toggle(s) in `apps/edge-server/config/config.json` (global `llm.provider` with optional per-model override is acceptable); validate env at startup in `llm_cloud/provider.py` — no wiring changes yet
-- [ ] Step 4 (edge providers wiring): update `apps/edge-server/llm_cloud/provider.py` to select Nebius/OpenAI based on config; ensure classification, device_control, and energy_efficiency models use the selected provider without changing public APIs
-- [ ] Step 5 (docs): update both READMEs with provider selection examples and required env vars for each provider
-- [ ] Step 6 (smoke tests): minimal provider init tests for cloud and edge (skip if corresponding API key not present); keep existing behavior defaulting to Nebius
+- [X] Step 3 (config management system): create `apps/cloud-rag/config/templates/` with provider templates, `apps/cloud-rag/scripts/switch_provider.py` for easy switching, and `apps/cloud-rag/config/README.md` documentation
+- [ ] Step 4 (edge config management): create `apps/edge-server/config/templates/` with provider templates, `apps/edge-server/scripts/switch_provider.py` for easy switching, and `apps/edge-server/config/README.md` documentation
+- [ ] Step 5 (edge config only): add provider toggle(s) in `apps/edge-server/config/config.json` (global `llm.provider` with optional per-model override is acceptable); validate env at startup in `llm_cloud/provider.py` — no wiring changes yet
+- [ ] Step 6 (edge providers wiring): update `apps/edge-server/llm_cloud/provider.py` to select Nebius/OpenAI based on config; ensure classification, device_control, and energy_efficiency models use the selected provider without changing public APIs
+- [ ] Step 7 (docs): update both READMEs with provider selection examples and required env vars for each provider
+- [ ] Step 8 (smoke tests): minimal provider init tests for cloud and edge (skip if corresponding API key not present); keep existing behavior defaulting to Nebius
 
 ## M12 — Hybrid retrieval with re-ranking (API unchanged)
 - [ ] Step 1: Add BM25 keyword retriever (langchain-community) alongside FAISS semantic retriever
