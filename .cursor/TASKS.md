@@ -74,15 +74,16 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 
 ## M12 — Hybrid retrieval with re-ranking (API unchanged)
 - [ ] Step 1: Add BM25 keyword retriever (langchain-community) alongside FAISS semantic retriever
-- [ ] Step 2: Config toggles: `retrieval.mode = semantic|hybrid`, `rerank.enabled = true|false`, `rerank.max_items`
-- [ ] Step 3: Reranking (optional): LLM-based re-ranker using existing `evaluate_relevance` on top-N combined candidates
-- [ ] Step 4: Chain update: choose path by config; keep response schema stable; surface retrieval metadata in LangFuse traces
-- [ ] Step 5: Tests/Docs: smoke tests for semantic vs hybrid; README notes on trade-offs and latency
+- [ ] Step 2: Hybrid fusion (RRF/Ensemble): config `retrieval.mode = semantic|hybrid`, `retrieval.semantic_k`, `retrieval.keyword_k`, `retrieval.fusion.method = rrf|weighted`, `retrieval.fusion.alpha`
+- [ ] Step 3: Tier 0 rerank (diversity/MMR; zero LLM calls): optional MMR over fused candidates; config `rerank.tier0.enabled = true|false`, `rerank.tier0.lambda`
+- [ ] Step 4: Tier 1 rerank (LLM-as-judge with current provider): score top-N fused items using small chat model (temperature 0.0) with strict JSON scoring; config `rerank.tier1.enabled`, `rerank.tier1.top_n`, `rerank.tier1.model`, `rerank.tier1.timeout_ms`; batch requests; cache scores
+- [ ] Step 5: Chain update: apply Tier 0 → Tier 1 (if enabled) → select final topK; API response unchanged; log per-step metadata (mode, candidates, scores) to LangFuse
+- [ ] Step 6: Tests/Docs: smoke tests for BM25 recall, hybrid vs semantic, Tier 0 on/off effect, Tier 1 JSON shape and gating; README notes on trade-offs/latency and config examples
 
 ## M13 — PDF ingestion for seeding
 - [ ] Step 1: Add PDF loader in `apps/cloud-rag/scripts/seed_index.py` (e.g., PyPDFLoader); configurable chunking by headings/blank lines
 - [ ] Step 2: Export chunks: write `faiss_index/chunks.jsonl` during seeding for BM25/hybrid reuse; update `manifest.json`
-- [ ] Step 3: CLI options: allow `--input-dir` and include `.pdf` and `.txt`; idempotent vectorization using per-file content-hash manifest (only process new/changed files; skip unchanged)
+- [ ] Step 3: CLI options: allow `--input-dir` and include `.pdf`; idempotent vectorization using per-file content-hash manifest (only process new/changed files; skip unchanged)
 - [ ] Step 4: Tests: seed with a small sample PDF; ensure FAISS builds and chunks export exists
 - [ ] Step 5: Docs: update cloud README with PDF instructions and caveats
 

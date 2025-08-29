@@ -17,9 +17,15 @@ Design goals:
 - Validate strictly against the cloud EnergyEfficiencyResponse to guarantee a stable contract
   for the edge app and frontend. Validation errors surface as ValueError with concise messages.
 
+M12 Step 1 Update:
+- Added BM25 keyword retriever initialization alongside FAISS for future hybrid retrieval.
+- BM25 is built from FAISS docstore at chain creation time and stored for efficient access.
+- No behavioral changes to retrieval logic yet; FAISS remains the active retriever.
+- Guards against docstore access failures with informative logging.
+
 TODO (future retrieval upgrades):
 - Add MMR (Maximal Marginal Relevance) to diversify top‑k results without changing the API surface.
-- Add hybrid lexical+dense retrieval (e.g., BM25 + FAISS) and simple re‑ranking (cross‑encoder or LLM‑based),
+- Wire BM25 + FAISS hybrid retrieval and simple re‑ranking (cross‑encoder or LLM‑based),
   keeping the public endpoint and response schema unchanged. These should be toggled via config only.
 """
 
@@ -46,6 +52,7 @@ try:  # pragma: no cover - import guard
     from langchain_core.runnables import Runnable, RunnableLambda  # type: ignore
     from langchain_core.retrievers import BaseRetriever  # type: ignore
     from langchain_community.vectorstores import FAISS  # type: ignore
+    from langchain_community.retrievers import BM25Retriever  # type: ignore
     from langchain.schema import Document  # type: ignore
 
 except Exception:  # pragma: no cover - fallback types
@@ -66,6 +73,7 @@ except Exception:  # pragma: no cover - fallback types
             raise NotImplementedError
 
     FAISS = None  # type: ignore
+    BM25Retriever = None  # type: ignore
 
     class Document:  # minimal stub
         def __init__(self, page_content: str, metadata: Dict[str, Any]):
@@ -156,6 +164,66 @@ def build_retriever(faiss_dir: str, embeddings) -> tuple[BaseRetriever, Any]:
     return retriever, vectorstore
 
 
+def build_bm25_retriever_from_vectorstore(vectorstore: Any, keyword_k: int) -> Any:
+    """
+    Build a BM25 retriever from the FAISS vectorstore's document store.
+
+    This helper function extracts documents from the FAISS vectorstore's docstore to build
+    a keyword-based BM25 retriever. This is done early in M12 Step 1 to prepare for hybrid
+    retrieval (semantic + keyword) in Step 2, without changing the current retrieval behavior.
+
+    The function accesses the FAISS docstore to get the corpus documents. If the docstore
+    is not accessible or empty, it returns None and logs a warning. This approach avoids
+    requiring a separate chunks manifest file in this step, while still enabling BM25
+    initialization for future hybrid retrieval.
+
+    Args:
+        vectorstore: A FAISS vectorstore instance with a docstore attribute containing documents.
+        keyword_k (int): The number of top documents the BM25 retriever should return.
+
+    Returns:
+        BM25Retriever | None: A configured BM25 retriever if docstore is accessible,
+            or None if the docstore cannot be accessed or is empty.
+
+    Note:
+        - This function guards against docstore access failures gracefully.
+        - The BM25 retriever is built once at startup for efficiency.
+        - If docstore access fails, future steps may need a chunks manifest approach.
+    """
+    if BM25Retriever is None:  # pragma: no cover - defensive guard
+        logger.warning("BM25Retriever not available; install langchain_community to enable keyword retrieval.")
+        return None
+
+    try:
+        # Try to access FAISS docstore to get the corpus
+        if not hasattr(vectorstore, 'docstore') or vectorstore.docstore is None:
+            logger.warning("FAISS docstore not accessible for BM25 initialization.")
+            return None
+
+        # Extract documents from the docstore
+        try:
+            documents = list(vectorstore.docstore.dict.values())
+        except Exception as e:
+            logger.warning("Failed to extract documents from FAISS docstore: %s", str(e))
+            return None
+
+        if not documents:
+            logger.warning("FAISS docstore is empty; cannot build BM25 retriever.")
+            return None
+
+        # Build BM25 retriever from the documents
+        bm25_retriever = BM25Retriever.from_documents(documents)
+        bm25_retriever.k = keyword_k
+
+        doc_count = len(documents)
+        logger.info("BM25 retriever initialized with %d documents (k=%d).", doc_count, keyword_k)
+        return bm25_retriever
+
+    except Exception as e:
+        logger.warning("BM25 initialization failed: %s", str(e))
+        return None
+
+
 def _format_context_items(docs: Any) -> str:
     """Render retrieved documents into a compact JSON list for the prompt."""
     items = []
@@ -201,10 +269,15 @@ def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: 
     output is parsed as JSON and validated against EnergyEfficiencyResponse. If parsing or validation
     fails, a ValueError is raised with a concise message to aid debugging.
 
+    This function also initializes a BM25 keyword retriever alongside the FAISS retriever,
+    preparing for hybrid retrieval in future steps. The BM25 retriever is built once at
+    startup and stored on the chain instance for efficient access.
+
     Args:
         llm: An LLM object supporting `.invoke(prompt: str) -> Any` and returning either a string or
             an object with a `.content` attribute containing the text output.
         retriever (BaseRetriever): A retriever built from the FAISS vector store.
+        vectorstore: The FAISS vectorstore instance for accessing the document corpus.
         system_prompt (str): The system prompt template containing {{CONTEXT}}, {{INTERACTION_ID}},
             and {{TOP_K}} placeholders.
 
@@ -212,6 +285,11 @@ def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: 
         Runnable: A Runnable whose `.invoke({question, interaction_id, top_k})` yields a JSON string
         conforming to EnergyEfficiencyResponse.
     """
+
+    # Initialize BM25 retriever once at chain creation time
+    retrieval_cfg = CONFIG.get("retrieval", {})
+    keyword_k = retrieval_cfg.get("keyword_k", 6)
+    keyword_retriever = build_bm25_retriever_from_vectorstore(vectorstore, keyword_k)
 
     def _execute(inputs: Dict[str, Any]) -> str:
         question = str(inputs.get("question", "")).strip()
