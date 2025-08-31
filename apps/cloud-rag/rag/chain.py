@@ -288,26 +288,153 @@ def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: 
 
     # Initialize BM25 retriever once at chain creation time
     retrieval_cfg = CONFIG.get("retrieval", {})
-    keyword_k = retrieval_cfg.get("keyword_k", 6)
+    keyword_k = int(retrieval_cfg.get("keyword_k", 6))
+    semantic_k_default = int(retrieval_cfg.get("semantic_k", 6))
+    fusion_alpha = float((retrieval_cfg.get("fusion", {}) or {}).get("alpha", 0.6))
+    mode = str(retrieval_cfg.get("mode", "semantic")).strip().lower()
     keyword_retriever = build_bm25_retriever_from_vectorstore(vectorstore, keyword_k)
+
+    def _get_stable_doc_id(doc: Any, fallback_index: int) -> str:
+        """
+        Derive a stable document identifier used for fusion across retrievers.
+
+        Prefers `metadata["sourceId"]` when available to ensure consistency with the
+        rest of the system. If missing, falls back to a combination of any available
+        metadata identifiers or the iteration index to maintain determinism.
+        """
+        metadata = getattr(doc, "metadata", {}) or {}
+        return (
+            str(metadata.get("sourceId"))
+            or str(metadata.get("source"))
+            or str(metadata.get("doc_id"))
+            or f"idx_{fallback_index}"
+        )
+
+    def _weighted_fuse_by_rank(
+        semantic: list[tuple[Any, float]] | list[Any],
+        keyword: list[Any] | None,
+        alpha: float,
+        final_k: int,
+    ) -> list[tuple[Any, float]]:
+        """
+        Fuse semantic and keyword results using rank-normalized weighted scores.
+
+        Rank-based normalization assigns each result a score of 1/(rank+1), which
+        keeps scales comparable across heterogeneous retrieval systems (e.g., FAISS
+        similarity vs BM25 keyword ranks). Weighted fusion then computes:
+        fused = alpha * semantic_norm + (1 - alpha) * keyword_norm.
+
+        Missing sides default to 0.0. The function returns the top `final_k` pairs
+        of (Document, fused_score) sorted by fused score descending, using the
+        semantic side as the source of canonical Document objects when available,
+        and falling back to keyword docs if a doc appears only on the keyword side.
+        """
+        # Build rank maps
+        semantic_rank: dict[str, tuple[int, Any]] = {}
+        for rank, item in enumerate(semantic):
+            if isinstance(item, tuple) and len(item) == 2:
+                doc = item[0]
+            else:
+                doc = item
+            doc_id = _get_stable_doc_id(doc, rank)
+            semantic_rank[doc_id] = (rank, doc)
+
+        keyword_rank: dict[str, tuple[int, Any]] = {}
+        if keyword:
+            for rank, doc in enumerate(keyword):
+                doc_id = _get_stable_doc_id(doc, rank)
+                keyword_rank[doc_id] = (rank, doc)
+
+        # Union of ids
+        all_ids = set(semantic_rank.keys()) | set(keyword_rank.keys())
+
+        fused: list[tuple[Any, float]] = []
+        for doc_id in all_ids:
+            sem_rank_doc = semantic_rank.get(doc_id)
+            key_rank_doc = keyword_rank.get(doc_id)
+
+            sem_norm = 1.0 / (sem_rank_doc[0] + 1) if sem_rank_doc else 0.0
+            key_norm = 1.0 / (key_rank_doc[0] + 1) if key_rank_doc else 0.0
+            fused_score = alpha * sem_norm + (1.0 - alpha) * key_norm
+
+            # Prefer the semantic Document object when available for downstream formatting
+            doc_obj = sem_rank_doc[1] if sem_rank_doc else key_rank_doc[1]  # type: ignore[index]
+            fused.append((doc_obj, fused_score))
+
+        fused.sort(key=lambda x: float(x[1]), reverse=True)
+        return fused[:final_k]
 
     def _execute(inputs: Dict[str, Any]) -> str:
         question = str(inputs.get("question", "")).strip()
         interaction_id = str(inputs.get("interaction_id", "")).strip()
         top_k = int(inputs.get("top_k", 3))
 
-        # Adjust retriever k at runtime and retrieve documents
+        # Retrieval mode selection: semantic-only or hybrid
         if hasattr(retriever, "search_kwargs"):
             retriever.search_kwargs["k"] = top_k  # type: ignore[attr-defined]
-        # Prefer vectorstore retrieval with scores when available
+
+        retrieval_mode = mode
+        sem_k = int(semantic_k_default)
+        key_k = int(keyword_k)
+        alpha = float(fusion_alpha)
+
+        # Semantic retrieval
         try:
-            docs = vectorstore.similarity_search_with_score(question, k=top_k)
+            semantic_results = vectorstore.similarity_search_with_score(question, k=sem_k)
         except Exception:
             try:
-                docs = vectorstore.similarity_search_with_relevance_scores(question, k=top_k)
+                semantic_results = vectorstore.similarity_search_with_relevance_scores(question, k=sem_k)
             except Exception:
                 # Fallback to retriever without scores
-                docs = retriever.invoke(question)
+                semantic_results = retriever.invoke(question)
+
+        final_top_k = int((CONFIG.get("retrieval", {}) or {}).get("default_top_k", 3))
+
+        if retrieval_mode == "hybrid":
+            keyword_results = None
+            if keyword_retriever is not None:
+                try:
+                    keyword_results = keyword_retriever.invoke(question)[:key_k]
+                except Exception:
+                    keyword_results = None
+
+            if keyword_results is None:
+                logger.info(
+                    "Retrieval mode=hybrid but BM25 unavailable; falling back to semantic-only."
+                )
+                fused_docs = [
+                    (item[0], 0.0) if isinstance(item, tuple) else (item, 0.0)
+                    for item in (semantic_results if isinstance(semantic_results, list) else [])
+                ]
+            else:
+                fused_docs = _weighted_fuse_by_rank(
+                    semantic=semantic_results,
+                    keyword=keyword_results,
+                    alpha=alpha,
+                    final_k=final_top_k,
+                )
+
+            # Logging
+            logger.info(
+                "Retrieval mode=%s | semantic_k=%d keyword_k=%d final_top_k=%d",
+                retrieval_mode,
+                sem_k,
+                key_k,
+                final_top_k,
+            )
+            top_preview = [
+                (
+                    _get_stable_doc_id(d if not isinstance(d, tuple) else d[0], i),
+                    float(s if not isinstance(d, tuple) else d[1] if i < len(fused_docs) else 0.0),
+                )
+                for i, (d, s) in enumerate(fused_docs[:3])
+            ]
+            logger.info("Top fused (doc_id, score): %s", top_preview)
+
+            docs = fused_docs
+        else:
+            # semantic-only path uses semantic results as-is, with scores if available
+            docs = semantic_results[:final_top_k] if isinstance(semantic_results, list) else semantic_results
 
         # Prepare context JSON for the prompt
         context_json = _format_context_items(docs)

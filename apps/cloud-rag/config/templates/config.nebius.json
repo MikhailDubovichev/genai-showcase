@@ -21,7 +21,10 @@
     "chunk_size": 1000,
     "chunk_overlap": 150,
     "allow_general_knowledge": true,
-    "keyword_k": 6
+    "mode": "semantic",
+    "semantic_k": 6,
+    "keyword_k": 6,
+    "fusion": { "alpha": 0.6 }
   },
   "langfuse": { "host": "https://cloud.langfuse.com" },
   "port": 8000
