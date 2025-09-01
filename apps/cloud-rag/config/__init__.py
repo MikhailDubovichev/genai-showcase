@@ -174,6 +174,75 @@ def _build_config(env: Mapping[str, str]) -> Dict[str, object]:
                     cfg_paths["seed_data_dir"] = str(paths_cfg.get("seed_data_dir"))
                 cfg["paths"] = cfg_paths
 
+        # NEW: retrieval section overlay (mode, k's, fusion alpha, etc.)
+        retrieval_cfg = json_cfg.get("retrieval", {})
+        if isinstance(retrieval_cfg, dict):
+            cfg_retr: Dict[str, object] = {}
+            if "mode" in retrieval_cfg:
+                cfg_retr["mode"] = str(retrieval_cfg.get("mode"))
+            if "semantic_k" in retrieval_cfg:
+                try:
+                    cfg_retr["semantic_k"] = int(retrieval_cfg.get("semantic_k"))
+                except Exception:
+                    pass
+            if "keyword_k" in retrieval_cfg:
+                try:
+                    cfg_retr["keyword_k"] = int(retrieval_cfg.get("keyword_k"))
+                except Exception:
+                    pass
+            if "default_top_k" in retrieval_cfg:
+                try:
+                    cfg_retr["default_top_k"] = int(retrieval_cfg.get("default_top_k"))
+                except Exception:
+                    pass
+            if "allow_general_knowledge" in retrieval_cfg:
+                try:
+                    cfg_retr["allow_general_knowledge"] = bool(retrieval_cfg.get("allow_general_knowledge"))
+                except Exception:
+                    pass
+            fusion_cfg = retrieval_cfg.get("fusion", {})
+            if isinstance(fusion_cfg, dict) and "alpha" in fusion_cfg:
+                try:
+                    cfg_retr["fusion"] = {"alpha": float(fusion_cfg.get("alpha"))}
+                except Exception:
+                    pass
+            if cfg_retr:
+                cfg["retrieval"] = cfg_retr
+
+        # NEW: rerank section overlay
+        rerank_cfg_json = json_cfg.get("rerank", {})
+        if isinstance(rerank_cfg_json, dict):
+            cfg_rerank: Dict[str, object] = {}
+            if "enabled" in rerank_cfg_json:
+                try:
+                    cfg_rerank["enabled"] = bool(rerank_cfg_json.get("enabled"))
+                except Exception:
+                    pass
+            if "top_n" in rerank_cfg_json:
+                try:
+                    cfg_rerank["top_n"] = int(rerank_cfg_json.get("top_n"))
+                except Exception:
+                    pass
+            if "timeout_ms" in rerank_cfg_json:
+                try:
+                    cfg_rerank["timeout_ms"] = int(rerank_cfg_json.get("timeout_ms"))
+                except Exception:
+                    pass
+            if "preview_chars" in rerank_cfg_json:
+                try:
+                    cfg_rerank["preview_chars"] = int(rerank_cfg_json.get("preview_chars"))
+                except Exception:
+                    pass
+            if "batch_size" in rerank_cfg_json:
+                try:
+                    cfg_rerank["batch_size"] = int(rerank_cfg_json.get("batch_size"))
+                except Exception:
+                    pass
+            if "model" in rerank_cfg_json:
+                cfg_rerank["model"] = str(rerank_cfg_json.get("model"))
+            if cfg_rerank:
+                cfg["rerank"] = cfg_rerank
+
     return cfg
 
 
