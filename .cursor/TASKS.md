@@ -80,11 +80,11 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Step 5: Docs. README minimal config examples
 
 ## M13 — PDF ingestion for seeding
-- [ ] Step 1: Add PDF loader in `apps/cloud-rag/scripts/seed_index.py` (e.g., PyPDFLoader); configurable chunking by headings/blank lines
-- [ ] Step 2: Export chunks: write `faiss_index/chunks.jsonl` during seeding for BM25/hybrid reuse; update `manifest.json`
-- [ ] Step 3: CLI options: allow `--input-dir` and include `.pdf`; idempotent vectorization using per-file content-hash manifest (only process new/changed files; skip unchanged)
-- [ ] Step 4: Tests: seed with a small sample PDF; ensure FAISS builds and chunks export exists
-- [ ] Step 5: Docs: update cloud README with PDF instructions and caveats
+- [ ] Step 1: PDF-only ingestion in `apps/cloud-rag/scripts/seed_index.py` using `PyMuPDFLoader` (fallback `PyPDFLoader`); heading-aware → sentence-window chunking; attach metadata (`doc_id`, `page`, `heading_path`).
+- [ ] Step 2: Idempotent seeding: build FAISS and update `faiss_index/manifest.json` with per-file `content_hash`, `chunks_count`, timestamps; skip unchanged. No `chunks.jsonl` in this milestone; BM25 continues to initialize from FAISS docstore at runtime.
+- [ ] Step 3: Keep CLI simple: fixed input directory (`apps/cloud-rag/rag/data/seed`); no new flags; rebuild by deleting `faiss_index/` (document in README).
+- [ ] Step 4: Tests (smoke): seed a small PDF; assert FAISS loads and `manifest.json` updated; no network.
+- [ ] Step 5: Docs: update cloud README with PDF ingestion steps, chunking policy, idempotency, and how to force rebuild.
 
 ## M14 — Datasets and evaluation scripts
 - [ ] Step 1: Small labeled sets: add `apps/edge-server/data/classifier_samples.jsonl` and `apps/cloud-rag/eval/data/ee_prompt_examples.jsonl`
