@@ -7,6 +7,15 @@
     "top_p": 0.95,
     "provider": "nebius"
   },
+  "rerank": {
+    "enabled": false,
+    "top_n": 10,
+    "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "timeout_ms": 3500,
+    "batch_size": 8,
+    "cache": true,
+    "preview_chars": 600
+  },
   "embeddings": {
     "name": "Qwen/Qwen3-Embedding-8B",
     "provider": "nebius"

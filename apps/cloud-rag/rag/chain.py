@@ -32,6 +32,7 @@ TODO (future retrieval upgrades):
 from __future__ import annotations
 
 import json
+import time
 import re
 import logging
 from pathlib import Path
@@ -364,6 +365,128 @@ def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: 
         fused.sort(key=lambda x: float(x[1]), reverse=True)
         return fused[:final_k]
 
+    def llm_judge_rerank(question: str, docs_list: list[Any], cfg: dict) -> list[tuple[Any, float]]:
+        """
+        Score and reorder retrieved candidates using a single LLM-as-judge call.
+
+        This helper performs a lightweight, deterministic reranking step after we have
+        collected the top candidates (either from semantic-only retrieval or from the
+        hybrid fusion path). It constructs a compact prompt that contains the user
+        question and a JSON array of candidate objects. Each candidate includes a stable
+        identifier (`id`) and a short text preview taken from the candidate document’s
+        `page_content`. The provider’s chat model is asked to return ONLY a strict JSON
+        array of objects in the shape `{id, score}`, where `score` is a relevance value
+        in the closed interval [0.0, 1.0]. The function parses this output, clamps any
+        numeric irregularities into [0, 1], and returns the input candidates ordered by
+        descending score, as pairs `(Document, float)`.
+
+        The preview length is configurable via `cfg["preview_chars"]` (default 600),
+        allowing operators to trade off latency and context sufficiency. If the model
+        invocation fails or the response is not valid JSON, the function logs a concise
+        INFO message and returns the original candidate order with zero scores rather
+        than raising. This keeps the reranker safe to enable without impacting the API
+        surface or error behavior of the main chain.
+
+        Args:
+            question (str): The user’s question that candidates must be relevant to.
+            docs_list (list[Any]): A list of candidate documents (or `(Document, score)`
+                tuples). The function will read each item’s `page_content` and metadata
+                to build a minimal preview and stable identifier.
+            cfg (dict): Rerank configuration mapping. Expected keys include:
+                - "timeout_ms" (int): Soft timeout for logging elapsed durations.
+                - "preview_chars" (int): Maximum characters from `page_content` to include
+                  per candidate preview (default 600).
+
+        Returns:
+            list[tuple[Any, float]]: Candidates paired with rerank scores in [0, 1],
+            sorted descending by score. On failure, original order with zero scores.
+        """
+        timeout_ms = int(cfg.get("timeout_ms", 3500))
+        preview_chars = int(cfg.get("preview_chars", 600))
+        # Prepare candidates (doc, id, preview)
+        prepared: list[tuple[Any, str, str]] = []
+        for idx, item in enumerate(docs_list):
+            doc = item[0] if isinstance(item, tuple) and len(item) == 2 else item
+            doc_id = _get_stable_doc_id(doc, idx)
+            preview = str(getattr(doc, "page_content", ""))[:preview_chars]
+            prepared.append((doc, doc_id, preview))
+        # Build prompt with all candidates in one request
+        system_msg = (
+            "You are a ranking assistant. Score each candidate's relevance to the user "
+            "question from 0.0 to 1.0. Return ONLY a JSON array of objects with fields "
+            "{id, score}. No prose, no extra keys."
+        )
+        candidates_payload = [
+            {"id": doc_id, "preview": preview} for (_doc, doc_id, preview) in prepared
+        ]
+        user_msg = (
+            "Question:\n" + question + "\n\nCandidates (JSON array):\n" + json.dumps(candidates_payload, ensure_ascii=False)
+        )
+
+        t0 = time.time()
+        try:
+            out = llm.invoke([
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ])  # type: ignore[var-annotated]
+        except Exception:
+            try:
+                out = llm.invoke(f"SYSTEM:\n{system_msg}\n\nUSER:\n{user_msg}")  # type: ignore[var-annotated]
+            except Exception:
+                out = None
+        elapsed_ms = int((time.time() - t0) * 1000.0)
+        if elapsed_ms > timeout_ms:
+            logger.info("LLM rerank call exceeded timeout_ms (elapsed=%dms)", elapsed_ms)
+
+        text = getattr(out, "content", out)
+        if not isinstance(text, str):
+            text = str(text)
+
+        # Parse once; on failure, skip rerank
+        try:
+            arr = json.loads(text)
+        except Exception:
+            logger.info("Rerank JSON parse failed; keeping original order for %d candidates.", len(prepared))
+            return [
+                (item[0] if isinstance(item, tuple) and len(item) == 2 else item, 0.0)
+                for item in docs_list
+            ]
+
+        tmp: dict[str, float] = {}
+        if isinstance(arr, list):
+            for obj in arr:
+                if not isinstance(obj, dict):
+                    continue
+                did = obj.get("id")
+                sc = obj.get("score")
+                if did is None or sc is None:
+                    continue
+                try:
+                    val = float(sc)
+                except Exception:
+                    continue
+                tmp[str(did)] = val
+
+        # Normalize into [0,1]
+        if tmp and max(tmp.values()) > 1.0 and max(tmp.values()) <= 10.0:
+            for k in list(tmp.keys()):
+                tmp[k] = float(tmp[k]) / 10.0
+        for k in list(tmp.keys()):
+            v = tmp[k]
+            if v < 0.0:
+                v = 0.0
+            if v > 1.0:
+                v = 1.0
+            tmp[k] = v
+
+        ranked: list[tuple[Any, float]] = []
+        for idx, item in enumerate(docs_list):
+            doc = item[0] if isinstance(item, tuple) and len(item) == 2 else item
+            did = _get_stable_doc_id(doc, idx)
+            ranked.append((doc, float(tmp.get(did, 0.0))))
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return ranked
+
     def _execute(inputs: Dict[str, Any]) -> str:
         question = str(inputs.get("question", "")).strip()
         interaction_id = str(inputs.get("interaction_id", "")).strip()
@@ -435,6 +558,25 @@ def build_chain(llm, retriever: BaseRetriever, vectorstore: Any, system_prompt: 
         else:
             # semantic-only path uses semantic results as-is, with scores if available
             docs = semantic_results[:final_top_k] if isinstance(semantic_results, list) else semantic_results
+
+        # Optional LLM-as-judge rerank stage
+        rerank_cfg = (CONFIG.get("rerank", {}) or {})
+        if bool(rerank_cfg.get("enabled", False)):
+            # Assemble candidate list limited to top_n
+            top_n = int(rerank_cfg.get("top_n", 10))
+            candidates = list(docs)[:top_n]
+            logger.info(
+                "Rerank enabled: top_n=%d batch_size=%d",
+                top_n,
+                int(rerank_cfg.get("batch_size", 8)),
+            )
+            ranked = llm_judge_rerank(question=question, docs_list=candidates, cfg=rerank_cfg)
+            # Keep only final_top_k after rerank
+            docs = ranked[:final_top_k]
+            top_prev = []
+            for i, (d, s) in enumerate(docs[:3]):
+                top_prev.append((_get_stable_doc_id(d, i), float(s)))
+            logger.info("Top reranked (doc_id, score): %s", top_prev)
 
         # Prepare context JSON for the prompt
         context_json = _format_context_items(docs)

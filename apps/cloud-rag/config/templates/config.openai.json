@@ -7,6 +7,15 @@
     "top_p": 0.95,
     "provider": "openai"
   },
+  "rerank": {
+    "enabled": false,
+    "top_n": 10,
+    "model": "gpt-4o-mini",
+    "timeout_ms": 3500,
+    "batch_size": 8,
+    "cache": true,
+    "preview_chars": 600
+  },
   "embeddings": {
     "name": "text-embedding-3-small",
     "provider": "openai"
