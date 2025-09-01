@@ -80,11 +80,11 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Step 5: Docs. README minimal config examples
 
 ## M13 — PDF ingestion for seeding
-- [ ] Step 1: PDF-only ingestion in `apps/cloud-rag/scripts/seed_index.py` using `PyMuPDFLoader` (fallback `PyPDFLoader`); heading-aware → sentence-window chunking; attach metadata (`doc_id`, `page`, `heading_path`).
-- [ ] Step 2: Idempotent seeding: build FAISS and update `faiss_index/manifest.json` with per-file `content_hash`, `chunks_count`, timestamps; skip unchanged. No `chunks.jsonl` in this milestone; BM25 continues to initialize from FAISS docstore at runtime.
-- [ ] Step 3: Keep CLI simple: fixed input directory (`apps/cloud-rag/rag/data/seed`); no new flags; rebuild by deleting `faiss_index/` (document in README).
-- [ ] Step 4: Tests (smoke): seed a small PDF; assert FAISS loads and `manifest.json` updated; no network.
-- [ ] Step 5: Docs: update cloud README with PDF ingestion steps, chunking policy, idempotency, and how to force rebuild.
+- [ ] Step 1: PDF ingestion + chunk export. In `apps/cloud-rag/scripts/seed_index.py` load PDFs (prefer `PyMuPDFLoader`, fallback `PyPDFLoader`), chunk with heading-aware → sentence-window policy, then write all chunks to `faiss_index/chunks.jsonl` (one JSON per chunk) with stable `id`, `doc_id`, `source_path`, `page`, `heading_path`, `text`, `created_at`, `hash`.
+- [ ] Step 2: Idempotency manifest. Update `faiss_index/manifest.json` per file with `content_hash`, `chunks_count`, timestamps; skip unchanged on re-run based on hash + splitter/embedding config keys.
+- [ ] Step 3: Build indexes from chunks.jsonl. Rebuild FAISS embeddings from `chunks.jsonl` (ignore unchanged if manifest matches) and initialize BM25 from `chunks.jsonl` (not from FAISS docstore) to decouple lexical indexing.
+- [ ] Step 4: Tests (smoke). Seed a tiny PDF; assert `faiss_index/` exists, `chunks.jsonl` present with expected fields, FAISS loads, and `manifest.json` updated. No network.
+- [ ] Step 5: Docs. README section with: where to drop PDFs, how chunking works, how `chunks.jsonl` serves as portable truth (multi-source ready), idempotency rules, and how to force rebuild (delete `faiss_index/`).
 
 ## M14 — Datasets and evaluation scripts
 - [ ] Step 1: Small labeled sets: add `apps/edge-server/data/classifier_samples.jsonl` and `apps/cloud-rag/eval/data/ee_prompt_examples.jsonl`
