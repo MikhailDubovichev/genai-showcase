@@ -75,9 +75,9 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 ## M12 — Hybrid retrieval with re-ranking (API unchanged)
 - [X] Step 1: Add BM25 keyword retriever (langchain-community) alongside FAISS semantic retriever
 - [X] Step 2: Hybrid fusion (weighted alpha only): config `retrieval.mode = semantic|hybrid`, `retrieval.semantic_k`, `retrieval.keyword_k`, `retrieval.fusion.alpha` (0–1, default 0.6); fused_score = alpha*semantic + (1-alpha)*keyword (rank-normalized)
-- [ ] Step 3: Rerank (LLM-as-judge, single path): score top-N fused items with the current provider’s small chat model (temperature 0.0) via strict JSON scoring; config `rerank.enabled`, `rerank.top_n`, `rerank.model`, `rerank.timeout_ms`; batch and cache
-- [ ] Step 4: Chain update: apply fusion → rerank → select final topK; API unchanged; log retrieval mode, fused candidates, and rerank scores to LangFuse
-- [ ] Step 5: Tests/Docs: smoke tests for semantic vs hybrid, rerank JSON shape/gating; README minimal config examples
+- [X] Step 3: Rerank (LLM-as-judge, single path): score top-N fused items with the current provider’s small chat model (temperature 0.0) via strict JSON scoring; config `rerank.enabled`, `rerank.top_n`, `rerank.model`, `rerank.timeout_ms`; batch and cache
+- [X] Step 4: Chain update: apply fusion → rerank → select final topK; API unchanged; log retrieval mode, fused candidates, and rerank scores to LangFuse
+- [X] Step 5: Docs. README minimal config examples
 
 ## M13 — PDF ingestion for seeding
 - [ ] Step 1: Add PDF loader in `apps/cloud-rag/scripts/seed_index.py` (e.g., PyPDFLoader); configurable chunking by headings/blank lines

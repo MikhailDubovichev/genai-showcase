@@ -104,6 +104,61 @@ Notes:
 - Templates live under `config/templates/` as `config.nebius.json` and `config.openai.json`.
 - If you switch embeddings provider, re-seed FAISS (`rm -rf faiss_index && poetry run python -m scripts.seed_index`).
 
+## Retrieval and Rerank (M12)
+
+The retrieval pipeline now supports two modes and an optional rerank stage:
+
+- Semantic only: FAISS similarity search
+- Hybrid: FAISS (semantic) + BM25 (keyword) with weighted fusion (alpha)
+- Optional rerank: LLM-as-judge, scores candidates in [0,1] and reorders
+
+Minimal config examples (apps/cloud-rag/config/config.json):
+
+Semantic only (no rerank):
+
+```json
+{
+  "retrieval": {
+    "mode": "semantic",
+    "semantic_k": 6,
+    "default_top_k": 3,
+    "allow_general_knowledge": true
+  },
+  "rerank": { "enabled": false }
+}
+```
+
+Hybrid + rerank:
+
+```json
+{
+  "retrieval": {
+    "mode": "hybrid",
+    "semantic_k": 6,
+    "keyword_k": 6,
+    "default_top_k": 3,
+    "fusion": { "alpha": 0.6 },
+    "allow_general_knowledge": true
+  },
+  "rerank": {
+    "enabled": true,
+    "top_n": 10,
+    "model": "gpt-4o-mini",
+    "timeout_ms": 3500,
+    "batch_size": 8,
+    "preview_chars": 600
+  }
+}
+```
+
+Notes:
+- BM25 requires the package `rank-bm25`. Install in cloud-rag: `poetry add rank-bm25` (inside `apps/cloud-rag`).
+- The chain freezes config at startup. After editing config.json, restart the server.
+- Expected INFO logs (hybrid):
+  - `Retrieval mode=hybrid | semantic_k=... keyword_k=... final_top_k=...`
+  - `Top fused (doc_id, score): [...]`
+  - If rerank is enabled: `Rerank enabled: top_n=...` and `Top reranked (doc_id, score): [...]`
+
 ## Project structure (cloud)
 ```
 api/            # FastAPI routers (health, rag, feedback)
