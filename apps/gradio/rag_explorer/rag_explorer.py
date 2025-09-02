@@ -174,8 +174,7 @@ def _build_ui() -> gr.Blocks:
     timeout_s = get_timeout_seconds(cfg)
 
     def handle_submit(
-        question: str,
-        top_k: int
+        question: str
     ) -> Tuple[str, str, float, List[List[Any]]]:
         """
         Handle form submission, measure latency, and format the RAG response.
@@ -189,7 +188,6 @@ def _build_ui() -> gr.Blocks:
 
         Args:
             question (str): The user's question for RAG processing.
-            top_k (int): Number of chunks to retrieve (1-10).
 
         Returns:
             Tuple[str, str, float, List[List[Any]]]: (pretty_json, message, latency_ms, chunk_table)
@@ -200,7 +198,7 @@ def _build_ui() -> gr.Blocks:
             base_url=base_url,
             question=question,
             interaction_id=iid,
-            top_k=top_k,
+            top_k=3,  # Fixed value from config
             timeout_s=timeout_s,
         )
         dt_ms = (time.monotonic() - t0) * 1000.0
@@ -228,7 +226,6 @@ def _build_ui() -> gr.Blocks:
             send_btn = gr.Button("Send")
             reset_btn = gr.Button("Reset")
         with gr.Row():
-            top_k_in = gr.Slider(label="topK", minimum=1, maximum=10, value=3, step=1)
             latency_out = gr.Number(label="Latency (ms)", precision=0)
         with gr.Row():
             json_out = gr.Code(label="Raw JSON")
@@ -245,7 +242,7 @@ def _build_ui() -> gr.Blocks:
         )
         send_btn.click(
             fn=handle_submit,
-            inputs=[question_in, top_k_in],
+            inputs=[question_in],
             outputs=[json_out, message_out, latency_out, chunk_table]
         )
 
