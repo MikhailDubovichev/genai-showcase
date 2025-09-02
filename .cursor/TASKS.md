@@ -80,7 +80,7 @@ Develop strictly in accordance with these tasks (see `.cursor/.cursorrules`). Ke
 - [X] Step 5: Docs. README minimal config examples
 
 ## M13 — PDF ingestion for seeding
-- [ ] Step 1: Unified ingestion → `chunks.jsonl`. In `apps/cloud-rag/scripts/seed_index.py` ingest both PDFs (prefer `PyMuPDFLoader`, fallback `PyPDFLoader`) and text/markdown (`.txt`, `.md`) from `rag/data/seed`, apply heading-aware → sentence-window for PDFs and sentence-window for text, then write a single `faiss_index/chunks.jsonl` with fields: `id`, `doc_id`, `source_path`, `page`, `heading_path`, `text`, `created_at`, `hash`.
+- [X] Step 1: Unified ingestion → `chunks.jsonl`. In `apps/cloud-rag/scripts/seed_index.py` ingest both PDFs (prefer `PyMuPDFLoader`, fallback `PyPDFLoader`) and text/markdown (`.txt`, `.md`) from `rag/data/seed`, apply heading-aware → sentence-window for PDFs and sentence-window for text, then write a single `faiss_index/chunks.jsonl` with fields: `id`, `doc_id`, `source_path`, `page`, `heading_path`, `text`, `created_at`, `hash`.
 - [ ] Step 2: Idempotency manifest. Update `faiss_index/manifest.json` per source file (all supported types) with `content_hash`, `chunks_count`, timestamps; skip unchanged on re-run based on hash + splitter config keys.
 - [ ] Step 3: Index build from `chunks.jsonl`. Rebuild FAISS embeddings from `chunks.jsonl` and initialize BM25 from `chunks.jsonl` (decoupled from FAISS docstore) to avoid re-parsing source files.
 - [ ] Step 4: Tests (smoke). Ingest one small PDF and one `.txt`; assert `faiss_index/` exists, `chunks.jsonl` present with expected fields and merged content, FAISS loads, and `manifest.json` updated. No network.

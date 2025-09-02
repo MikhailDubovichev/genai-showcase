@@ -1,5 +1,5 @@
 """
-Seed utilities for the Cloud RAG service: text/PDF ingestion, chunking, export, and FAISS build.
+Seed utilities for the Cloud RAG service: unified document ingestion, chunking, export, and FAISS build.
 
 This script serves two closely related purposes depending on milestone needs:
 
@@ -50,7 +50,7 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Iterable, List, Tuple
+from typing import List, Tuple, Dict, Any
 
 # Ensure app root is on sys.path so `providers` can be imported when running this
 # file directly (e.g., via Cursor's "Run Python File" or python path/to/script.py)
@@ -68,63 +68,99 @@ logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# M13 Step 1: PDF ingestion → sentence-window chunking → chunks.jsonl export
+# M13 Step 1: Unified document ingestion → sentence-window chunking → chunks.jsonl export
 # -----------------------------------------------------------------------------
 SENT_WINDOW_SIZE = 10  # 8–12 sentences per chunk
 SENT_WINDOW_OVERLAP = 2  # 2-sentence overlap
 
 
-def _list_pdf_files(root: Path) -> List[Path]:
+def _list_all_files(root: Path) -> List[Path]:
     """
-    Enumerate PDF files in the configured seed directory using a simple, predictable policy.
+    Enumerate all supported files (PDF, txt, md) in the seed directory for unified processing.
 
     This function inspects the immediate children of the provided directory and returns all
-    paths whose extension is ".pdf" (case‑insensitive). The scan is intentionally non‑recursive
-    to keep behavior deterministic and easy to reason about in local development and CI runs.
-    A non‑recursive design also reduces surprises from deeply nested folders or accidentally
-    large corpora. Later milestones may introduce recursive discovery or CLI flags; for the
-    current step we keep the surface minimal and opinionated to ensure repeatability.
+    paths whose extension is ".pdf", ".txt", or ".md" (case‑insensitive). The scan is
+    intentionally non‑recursive to keep behavior deterministic and easy to reason about.
 
     Args:
-        root (Path): The directory under which PDF files are searched.
+        root (Path): The directory under which source files are searched.
 
     Returns:
-        List[Path]: A list of absolute or relative file system paths pointing to PDF files.
+        List[Path]: A list of file paths pointing to supported source files.
     """
-    return [p for p in root.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"]
+    supported_exts = {".pdf", ".txt", ".md"}
+    return [p for p in root.iterdir() if p.is_file() and p.suffix.lower() in supported_exts]
 
 
-def _load_pdf_documents(pdf_path: Path) -> List[object]:
+def _load_document_content(file_path: Path) -> List[Dict[str, Any]]:
     """
-    Load a PDF into LangChain Documents, preferring layout‑aware PyMuPDF, with a robust fallback.
+    Load a single file into structured document records with unified metadata.
 
-    The loader selection prioritizes `PyMuPDFLoader` for richer layout handling and improved text
-    extraction on many documents. If that import or load fails for any reason (missing optional
-    dependency, unsupported file, or platform differences), the function falls back to
-    `PyPDFLoader`. Both loaders return page‑level `Document` objects with `page_content` and
-    `metadata`. We pass through whatever metadata is available (e.g., page numbers), which is
-    later used to populate the `page` field in exported JSONL chunks. Failures are logged and an
-    empty list is returned to keep the ingestion run resilient and observable without crashing.
+    This function handles different file types and returns a consistent structure:
+    - PDFs: Use PyMuPDFLoader (fallback PyPDFLoader), one record per page
+    - Text/Markdown: Read as UTF-8, single record with full content
+
+    Each record contains:
+    - content: The text content
+    - source_path: File path
+    - source_type: File extension without dot (pdf, txt, md)
+    - page: Page number for PDFs, None for text files
+    - heading_path: Extracted headings (empty list if not available)
 
     Args:
-        pdf_path (Path): The path of the PDF file to load and parse into `Document` objects.
+        file_path (Path): The path of the file to load.
 
     Returns:
-        List[Document]: A list of LangChain `Document` objects, typically one per page, or an empty
-        list if loading failed. Each document includes `page_content` and a `metadata` mapping.
+        List[Dict[str, Any]]: A list of document records with unified metadata.
     """
-    try:
-        from langchain_community.document_loaders import PyMuPDFLoader  # type: ignore
-        loader = PyMuPDFLoader(str(pdf_path))
-        return loader.load()
-    except Exception:
+    records = []
+    source_type = file_path.suffix.lower().lstrip(".")
+    
+    if source_type == "pdf":
+        # Load PDF documents
         try:
-            from langchain_community.document_loaders import PyPDFLoader  # type: ignore
-            loader = PyPDFLoader(str(pdf_path))
-            return loader.load()
+            from langchain_community.document_loaders import PyMuPDFLoader  # type: ignore
+            loader = PyMuPDFLoader(str(file_path))
+            docs = loader.load()
+        except Exception:
+            try:
+                from langchain_community.document_loaders import PyPDFLoader  # type: ignore
+                loader = PyPDFLoader(str(file_path))
+                docs = loader.load()
+            except Exception as exc:
+                logger.warning("Failed to load PDF %s: %s", file_path, exc)
+                return []
+        
+        for doc in docs:
+            metadata = getattr(doc, "metadata", {}) or {}
+            page = metadata.get("page") or metadata.get("page_number") or None
+            heading_path = metadata.get("heading_path") or []
+            if not isinstance(heading_path, list):
+                heading_path = []
+            
+            records.append({
+                "content": getattr(doc, "page_content", ""),
+                "source_path": str(file_path),
+                "source_type": source_type,
+                "page": int(page) if isinstance(page, int) else page,
+                "heading_path": heading_path,
+            })
+    
+    elif source_type in {"txt", "md"}:
+        # Load text/markdown files
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            records.append({
+                "content": content,
+                "source_path": str(file_path),
+                "source_type": source_type,
+                "page": None,
+                "heading_path": [],
+            })
         except Exception as exc:
-            logger.warning("Failed to load PDF %s: %s", pdf_path, exc)
-            return []
+            logger.warning("Failed to read text file %s: %s", file_path, exc)
+    
+    return records
 
 
 def _sentence_tokenize(text: str) -> List[str]:
@@ -139,7 +175,7 @@ def _sentence_tokenize(text: str) -> List[str]:
     boundaries and reduce mid‑sentence cuts that harm retrieval and reranking quality.
 
     Args:
-        text (str): Raw text extracted from a PDF page or an earlier preprocessing step.
+        text (str): Raw text extracted from a document or an earlier preprocessing step.
 
     Returns:
         List[str]: A list of sentence strings with whitespace normalized and empties removed.
@@ -228,65 +264,80 @@ def _stable_doc_id_from_stem(stem: str) -> str:
     return s or "doc"
 
 
-def _build_pdf_chunks(input_dir: Path) -> List[dict]:
+def _build_unified_chunks(input_dir: Path) -> List[dict]:
     """
-    Ingest PDFs from the seed directory and produce JSONL‑ready chunk dictionaries.
+    Unified document ingestion and chunking pipeline for all supported file types.
 
-    This routine implements the M13 Step 1 policy: it enumerates `.pdf` files, loads them into
-    page‑level LangChain `Document` objects, and transforms each page into overlapping
-    sentence‑window chunks (10 sentences with 2 sentences overlap by default). For every chunk it
-    builds a portable record with a stable `id`, `doc_id`, `source_path`, optional `page`, optional
-    `heading_path`, the normalized `text`, a `created_at` timestamp in ISO 8601 format, and a SHA‑256
-    `hash` of the normalized text. The output list is later written to `faiss_index/chunks.jsonl` and
-    serves as the canonical source for downstream indexing and retrieval steps.
+    This function implements the M13 Step 1 unified approach:
+    1. Discover all supported files (PDF, txt, md) in the input directory
+    2. Load each file into structured document records
+    3. Apply consistent sentence-window chunking to all document content
+    4. Build portable chunk dictionaries with stable IDs and metadata
+
+    The pipeline ensures all file types use the same chunking logic (sentence-window with
+    10 sentences per chunk, 2 sentences overlap) for consistency in downstream retrieval
+    and reranking performance.
 
     Args:
-        input_dir (Path): The directory containing source PDF files to ingest.
+        input_dir (Path): The directory containing source files to ingest.
 
     Returns:
-        List[dict]: A list of chunk dictionaries ready for JSONL export.
+        List[dict]: A list of chunk dictionaries ready for JSONL export and indexing.
     """
     chunks_out: List[dict] = []
-    pdfs = _list_pdf_files(input_dir)
-    total_docs = 0
-    for pdf in pdfs:
-        docs = _load_pdf_documents(pdf)
-        if not docs:
+    files = _list_all_files(input_dir)
+    
+    logger.info("Discovered %d files for unified ingestion", len(files))
+    
+    # Step 1: Load all documents with unified metadata
+    all_documents = []
+    for file_path in files:
+        records = _load_document_content(file_path)
+        all_documents.extend(records)
+    
+    logger.info("Loaded %d document records from %d files", len(all_documents), len(files))
+    
+    # Step 2: Apply consistent sentence-window chunking to all documents
+    total_chunks = 0
+    for doc_record in all_documents:
+        content = doc_record["content"]
+        if not content.strip():
             continue
-        total_docs += 1
-        doc_id = _stable_doc_id_from_stem(pdf.stem)
+            
+        # Generate stable doc_id from filename
+        file_path = Path(doc_record["source_path"])
+        doc_id = _stable_doc_id_from_stem(file_path.stem)
+        
+        # Apply sentence-window chunking
+        sentences = _sentence_tokenize(content)
+        windows = _chunk_sentences(sentences, SENT_WINDOW_SIZE, SENT_WINDOW_OVERLAP)
+        
         chunk_index = 0
-        for d in docs:
-            page_content = getattr(d, "page_content", "")
-            metadata = getattr(d, "metadata", {}) or {}
-            # page could be under different keys depending on loader
-            page = metadata.get("page") or metadata.get("page_number") or None
-            heading_path = metadata.get("heading_path") or []
-            if not isinstance(heading_path, list):
-                heading_path = []
-
-            sentences = _sentence_tokenize(page_content)
-            windows = _chunk_sentences(sentences, SENT_WINDOW_SIZE, SENT_WINDOW_OVERLAP)
-            for w in windows:
-                text_norm = _normalize_text(w)
-                if not text_norm:
-                    continue
-                chunk_id = f"{doc_id}#{chunk_index}"
-                h = hashlib.sha256(text_norm.encode("utf-8")).hexdigest()
-                chunks_out.append(
-                    {
-                        "id": chunk_id,
-                        "doc_id": doc_id,
-                        "source_path": str(pdf),
-                        "page": int(page) if isinstance(page, int) else page,
-                        "heading_path": heading_path,
-                        "text": text_norm,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "hash": h,
-                    }
-                )
-                chunk_index += 1
-    logger.info("Processed %d PDFs; produced %d chunks", total_docs, len(chunks_out))
+        for window in windows:
+            text_norm = _normalize_text(window)
+            if not text_norm:
+                continue
+                
+            chunk_id = f"{doc_id}#{chunk_index}"
+            h = hashlib.sha256(text_norm.encode("utf-8")).hexdigest()
+            
+            chunks_out.append({
+                "id": chunk_id,
+                "doc_id": doc_id,
+                "source_path": doc_record["source_path"],
+                "source_type": doc_record["source_type"],
+                "page": doc_record["page"],
+                "heading_path": doc_record["heading_path"],
+                "text": text_norm,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "hash": h,
+            })
+            chunk_index += 1
+        
+        if chunk_index > 0:
+            total_chunks += chunk_index
+    
+    logger.info("Generated %d chunks using unified sentence-window chunking", len(chunks_out))
     return chunks_out
 
 
@@ -299,7 +350,7 @@ def _write_chunks_jsonl(out_path: Path, chunks: List[dict]) -> None:
     a clean snapshot of the current ingestion. It ensures the parent directory exists, serializes
     each chunk with `ensure_ascii=False` to preserve characters, and logs a concise summary with
     the total number of chunks and file path. Later steps will use this file to build FAISS and
-    initialize BM25 without needing to re‑parse PDFs.
+    initialize BM25 without needing to re‑parse source files.
 
     Args:
         out_path (Path): The destination path for `chunks.jsonl`.
@@ -316,104 +367,38 @@ def _write_chunks_jsonl(out_path: Path, chunks: List[dict]) -> None:
     logger.info("Wrote %d chunks to %s", len(chunks), out_path)
 
 
-# -----------------------------------------------------------------------------
-# Legacy text seeding helpers (kept for reference; not used in M13 Step 1 run)
-# -----------------------------------------------------------------------------
-
-def _read_text_files(root: Path) -> List[Tuple[str, str]]:
+def _build_documents_from_chunks(chunks: List[dict], source_prefix: str = ""):
     """
-    Recursively read .txt and .md files from a directory tree.
+    Convert chunk records into LangChain Documents for FAISS index building.
+
+    This helper bridges the unified chunking pipeline to the legacy FAISS building path.
+    It takes chunk dictionaries (from the JSONL export) and converts them to LangChain
+    Document objects with the expected metadata format for the existing index builder.
 
     Args:
-        root (Path): Directory to scan for text files.
-
-    Returns:
-        List[Tuple[str, str]]: List of (path_str, file_text) pairs.
-    """
-    results: List[Tuple[str, str]] = []
-    for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in {".txt", ".md"}:
-            try:
-                text = path.read_text(encoding="utf-8")
-                results.append((str(path), text))
-            except Exception as exc:  # pragma: no cover - rare I/O failures
-                logger.warning("Failed to read %s: %s", path, exc)
-    return results
-
-
-def _chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
-    """
-    Chunk input text into overlapping windows, attempting to split on whitespace.
-
-    The algorithm walks the text in steps of (chunk_size - chunk_overlap), and for
-    each window it expands forward to the next whitespace boundary where feasible.
-    This keeps words intact while still enforcing approximate chunk sizes. The
-    function returns a list of substrings ready to be embedded.
-
-    Args:
-        text (str): The raw file contents to be chunked.
-        chunk_size (int): Target size in characters for each chunk.
-        chunk_overlap (int): Overlap in characters between consecutive chunks.
-
-    Returns:
-        List[str]: Overlapping chunks of text, preserving word boundaries where possible.
-    """
-    if chunk_size <= 0:
-        return [text]
-    step = max(1, chunk_size - max(0, chunk_overlap))
-    chunks: List[str] = []
-    i = 0
-    n = len(text)
-    while i < n:
-        end = min(n, i + chunk_size)
-        # Expand end to the right until whitespace to avoid cutting words, within a small limit
-        if end < n:
-            j = end
-            limit = min(n, end + 50)
-            while j < limit and not text[j].isspace():
-                j += 1
-            if j > end:
-                end = j
-        chunks.append(text[i:end].strip())
-        i += step
-    return [c for c in chunks if c]
-
-
-def _build_documents(
-    pairs: List[Tuple[str, str]],
-    chunk_size: int,
-    chunk_overlap: int,
-    source_prefix: str,
-):
-    """
-    Convert (path, text) pairs into LangChain Documents with metadata for source and scores.
-
-    Each chunk receives a deterministic source identifier that encodes the original file stem and
-    chunk index. This metadata is used later by the chain to populate citation entries. The
-    function yields documents to avoid holding too much in memory when seeding large corpora.
+        chunks (List[dict]): Chunk dictionaries from unified ingestion.
+        source_prefix (str): Optional prefix for sourceId metadata.
 
     Yields:
-        Document: A LangChain Document with `page_content` set to a chunk and metadata including
-        `sourceId` and default `score` (0.0 during seeding; retriever will supply scores at query time).
+        Document: LangChain Document objects ready for FAISS embedding and indexing.
     """
-    # Newer LangChain exposes Document under langchain_core; keep a fallback for older layouts.
+    # Import Document with compatibility
     try:
         from langchain_core.documents import Document  # type: ignore
     except Exception:
         try:
             from langchain.schema import Document  # type: ignore
-        except Exception as exc:  # pragma: no cover - dependency not installed
+        except Exception as exc:  # pragma: no cover
             raise RuntimeError(
-                "Missing LangChain dependency. Install it via: "
-                "poetry add langchain langchain-community"
+                "Missing LangChain dependency. Install it via: poetry add langchain langchain-community"
             ) from exc
-
-    for path_str, text in pairs:
-        stem = Path(path_str).stem
-        chunks = _chunk_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        for idx, chunk in enumerate(chunks):
-            source_id = f"{source_prefix}{stem}#{idx}"
-            yield Document(page_content=chunk, metadata={"sourceId": source_id, "score": 0.0})
+    
+    for chunk in chunks:
+        source_id = f"{source_prefix}{chunk['id']}"
+        yield Document(
+            page_content=chunk["text"],
+            metadata={"sourceId": source_id, "score": 0.0}
+        )
 
 
 def seed_index(
@@ -424,28 +409,34 @@ def seed_index(
     source_prefix: str,
 ) -> None:
     """
-    Seed the FAISS index with documents embedded by NebiusEmbeddings.
+    Seed the FAISS index using the unified document ingestion and chunking pipeline.
 
-    This function orchestrates the seeding flow end-to-end: it enumerates source files in the data
-    directory, chunks them using the overlapping window strategy, builds LangChain Document objects
-    with source metadata, obtains Nebius embeddings via the providers module, and finally constructs
-    a FAISS index which is saved to the specified directory. It logs key progress points to assist
-    with troubleshooting and to provide basic observability during development runs.
+    This function implements the legacy FAISS seeding path using the new unified approach.
+    It processes all supported file types (PDF, txt, md) with consistent sentence-window
+    chunking, then builds and persists a FAISS index. The chunk_size and chunk_overlap
+    parameters are preserved for API compatibility but the actual chunking uses the
+    sentence-window approach for consistency with the M13 pipeline.
 
     Args:
-        data_dir (Path): Directory tree containing .txt/.md snippets to index.
-        index_dir (Path): Target directory to write the FAISS index files.
-        chunk_size (int): Target character length of each chunk.
-        chunk_overlap (int): Number of overlapping characters between chunks.
-        source_prefix (str): Prefix used to build stable `sourceId` values.
+        data_dir (Path): Directory containing source files (PDF, txt, md).
+        index_dir (Path): Output directory for FAISS index files.
+        chunk_size (int): Legacy parameter (preserved for API compatibility).
+        chunk_overlap (int): Legacy parameter (preserved for API compatibility).
+        source_prefix (str): Prefix used to build stable sourceId values.
     """
-    files = _read_text_files(data_dir)
-    logger.info("Discovered %d source files under %s", len(files), data_dir)
-
-    docs = list(_build_documents(files, chunk_size, chunk_overlap, source_prefix))
-    logger.info("Prepared %d chunks for embedding", len(docs))
-
-    # Use provider factory to resolve embeddings by CONFIG
+    logger.info("Starting unified FAISS seeding from %s", data_dir)
+    
+    # Step 1: Build chunks using unified pipeline
+    chunks = _build_unified_chunks(data_dir)
+    if not chunks:
+        logger.warning("No chunks generated from %s", data_dir)
+        return
+    
+    # Step 2: Convert chunks to LangChain Documents
+    docs = list(_build_documents_from_chunks(chunks, source_prefix))
+    logger.info("Prepared %d documents for embedding", len(docs))
+    
+    # Step 3: Build FAISS index
     try:
         from config import CONFIG  # local import to avoid circulars at module import
     except Exception:  # pragma: no cover - defensive
@@ -497,18 +488,19 @@ def seed_index(
 
 def main() -> None:
     """
-    Entry point for M13 Step 1: ingest PDFs and export a canonical chunks.jsonl snapshot.
+    Entry point for M13 Step 1: unified document ingestion and chunks.jsonl export.
 
-    This command scans the fixed input directory `apps/cloud-rag/rag/data/seed` for `.pdf` files,
-    loads each with a robust loader strategy (try PyMuPDF, then fall back to PyPDF), and converts
-    pages into overlapping sentence‑window chunks. It then writes the consolidated list of chunks to
-    `apps/cloud-rag/faiss_index/chunks.jsonl`, overwriting any previous file to provide a single,
-    authoritative snapshot. The output includes stable identifiers, basic provenance metadata, and a
-    SHA‑256 hash of each normalized chunk. Logging reports how many PDFs were processed, how many
-    chunks were written, and the destination path so developers can quickly verify ingestion.
+    This command implements the streamlined pipeline:
+    1. Load documents from all supported file types (PDF, txt, md)
+    2. Apply consistent sentence-window chunking to all content
+    3. Write unified chunks.jsonl with stable IDs and provenance metadata
+    4. Log progress and summary statistics
+
+    The approach ensures all file types use the same chunking logic for downstream
+    consistency in retrieval and reranking performance.
 
     Returns:
-        None: This function coordinates the ingestion and export flow and logs progress.
+        None: Coordinates unified ingestion and logs progress and output location.
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     app_root = Path(__file__).resolve().parents[1]
@@ -518,15 +510,36 @@ def main() -> None:
     if not input_dir.exists():
         logger.info("Seed directory %s does not exist. Creating it.", input_dir)
         input_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("Place one or more .pdf files under %s and rerun seeding.", input_dir)
+        logger.info("Place source files (.pdf, .txt, .md) under %s and rerun seeding.", input_dir)
         # Continue; will produce zero chunks.
 
-    chunks = _build_pdf_chunks(input_dir)
+    # Unified pipeline: documents → chunks → jsonl
+    chunks = _build_unified_chunks(input_dir)
     _write_chunks_jsonl(output_jsonl, chunks)
-    logger.info("PDF ingestion complete.")
+    
+    logger.info("Unified ingestion complete. Total chunks: %d", len(chunks))
 
 
 if __name__ == "__main__":
-    main()
-
-
+    # Support both main() and legacy CLI args
+    if len(sys.argv) > 1:
+        # Legacy CLI mode for backward compatibility
+        parser = argparse.ArgumentParser(description="Seed FAISS index from documents")
+        parser.add_argument("--data-dir", type=Path, default="rag/data/seed")
+        parser.add_argument("--index-dir", type=Path, default="faiss_index")
+        parser.add_argument("--chunk-size", type=int, default=1000)
+        parser.add_argument("--chunk-overlap", type=int, default=150)
+        parser.add_argument("--source-prefix", type=str, default="")
+        
+        args = parser.parse_args()
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        seed_index(
+            args.data_dir,
+            args.index_dir,
+            args.chunk_size,
+            args.chunk_overlap,
+            args.source_prefix,
+        )
+    else:
+        # M13 Step 1 mode (default)
+        main()
