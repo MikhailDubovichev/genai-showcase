@@ -59,6 +59,18 @@
       "content_hash": "b2db878d378c6bd9263594d386b35f7bc904df496149605e68e2815a40d429b3",
       "chunks_count": 1,
       "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/35_Do_Large_Foundation_Models_ (2).pdf": {
+      "doc_id": "35_do_large_foundation_models_2",
+      "content_hash": "f4de1999c167efcc6694e9da0176dc5dde7b5481f46e22e661b1a602ee1cfc22",
+      "chunks_count": 0,
+      "updated_at": "2025-09-02T16:06:40.522731+00:00"
+    },
+    "rag/data/seed/Energy-Saving & Automation Guide.pdf": {
+      "doc_id": "energy_saving_automation_guide",
+      "content_hash": "4e579bda8227739f3ad1636ef04e7c9ea6b31dd73d8d602bf29d42d5c6503404",
+      "chunks_count": 112,
+      "updated_at": "2025-09-02T16:13:54.507230+00:00"
     }
   },
   "config": {
@@ -69,10 +81,10 @@
     "config_fingerprint": "548c93e959278d644853fff7dfb16b3573f78f0efacace31b89c9d679d5716c0"
   },
   "faiss": {
-    "vectors_count": 9,
+    "vectors_count": 121,
     "embedding_dim": 1536,
     "model_from_config": "text-embedding-3-small",
-    "built_at": "2025-09-02T14:30:22.641294+00:00",
+    "built_at": "2025-09-02T16:13:54.506942+00:00",
     "config_fingerprint": "548c93e959278d644853fff7dfb16b3573f78f0efacace31b89c9d679d5716c0"
   }
 }
