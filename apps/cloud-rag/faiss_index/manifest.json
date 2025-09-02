@@ -4,5 +4,75 @@
   "dimension": 1536,
   "chunk_size": 1000,
   "chunk_overlap": 150,
-  "seeded_at": "2025-08-28T13:14:35.224757+00:00"
+  "seeded_at": "2025-08-28T13:14:35.224757+00:00",
+  "files": {
+    "rag/data/seed/standby_power_tips.txt": {
+      "doc_id": "standby_power_tips",
+      "content_hash": "8ceb72a7c70b86cfab59bd31756a23748d539e1fce762c94663ca8e7178259df",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/hvac_maintenance.txt": {
+      "doc_id": "hvac_maintenance",
+      "content_hash": "eed716240bef6dd36424f65d9e049516683be49f19a9eb395e382584c01438cf",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/standby_power.txt": {
+      "doc_id": "standby_power",
+      "content_hash": "46b584f95cba758f54f560e4f6bedcdc24023c2eb540ac7cd148e7afd75153b5",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/thermostat_scheduling.txt": {
+      "doc_id": "thermostat_scheduling",
+      "content_hash": "0b4a33c04ca2f4e9dd0a582bd6fa46a90feb4efe8cab783c5a45fc9b1f0f65a5",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/health_nutrition_basics.txt": {
+      "doc_id": "health_nutrition_basics",
+      "content_hash": "5b0e66b006cfc77a3c905d02970739f67c79f42e067b460e6de09b9a034a0a25",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/health_physical_activity.txt": {
+      "doc_id": "health_physical_activity",
+      "content_hash": "1d106d762a86e4026edb983c9496b91dfa04a338ab6995be05297ef3c48811f3",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/insulation_air_sealing.txt": {
+      "doc_id": "insulation_air_sealing",
+      "content_hash": "809aafe8103c03f479dcd29f696a86d0ea076f5e97f6ec91cbaa2db7e51485be",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/lighting_led.txt": {
+      "doc_id": "lighting_led",
+      "content_hash": "f16fe37c34213882b79a68a51d760d3e60fa8fd89a4e1f11f6546dfa04b20332",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    },
+    "rag/data/seed/health_sleep_hygiene.txt": {
+      "doc_id": "health_sleep_hygiene",
+      "content_hash": "b2db878d378c6bd9263594d386b35f7bc904df496149605e68e2815a40d429b3",
+      "chunks_count": 1,
+      "updated_at": "2025-09-02T14:30:22.641589+00:00"
+    }
+  },
+  "config": {
+    "splitter": {
+      "sent_window_size": 10,
+      "sent_window_overlap": 2
+    },
+    "config_fingerprint": "548c93e959278d644853fff7dfb16b3573f78f0efacace31b89c9d679d5716c0"
+  },
+  "faiss": {
+    "vectors_count": 9,
+    "embedding_dim": 1536,
+    "model_from_config": "text-embedding-3-small",
+    "built_at": "2025-09-02T14:30:22.641294+00:00",
+    "config_fingerprint": "548c93e959278d644853fff7dfb16b3573f78f0efacace31b89c9d679d5716c0"
+  }
 }

@@ -591,26 +591,160 @@ def build_retriever(faiss_dir: str, embeddings) -> tuple[BaseRetriever, Any]:
     return retriever, vectorstore
 
 
+def _load_chunks_jsonl(path: Path) -> list[dict]:
+    """
+    Stream read chunks from the canonical chunks.jsonl file with validation.
+
+    This helper loads the complete set of processed chunks from the JSONL export,
+    performing minimal validation to ensure each chunk has the required "text" field
+    for BM25 corpus creation. Invalid entries are logged and skipped to maintain
+    robustness when initializing the keyword retriever from the portable truth.
+
+    Args:
+        path (Path): Path to the chunks.jsonl file.
+
+    Returns:
+        list[dict]: List of validated chunk dictionaries with "text" field present.
+    """
+    chunks = []
+    
+    if not path.exists():
+        logger.debug("chunks.jsonl not found at %s", path)
+        return chunks
+    
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    chunk = json.loads(line)
+                    
+                    # Validate that "text" field is present for BM25 corpus
+                    if "text" in chunk:
+                        chunks.append(chunk)
+                    else:
+                        logger.debug("Chunk at line %d missing 'text' field", line_num)
+                
+                except json.JSONDecodeError:
+                    logger.debug("Invalid JSON at line %d in chunks.jsonl", line_num)
+                    continue
+    
+    except Exception as exc:
+        logger.warning("Failed to read chunks.jsonl from %s: %s", path, exc)
+        return []
+    
+    logger.debug("Loaded %d chunks from %s", len(chunks), path)
+    return chunks
+
+
+def _bm25_corpus_from_chunks(chunks: list[dict]) -> list[str]:
+    """
+    Extract plain text corpus from chunks for BM25 retriever initialization.
+
+    This helper prepares the text corpus that enables BM25 initialization directly
+    from chunks.jsonl rather than depending on FAISS docstore structure. This
+    decouples lexical indexing from vector indexing, providing a more portable
+    and reliable approach to keyword retrieval initialization.
+
+    Args:
+        chunks (list[dict]): Chunk dictionaries from chunks.jsonl.
+
+    Returns:
+        list[str]: Plain text list suitable for BM25Retriever.from_texts().
+    """
+    return [chunk.get("text", "") for chunk in chunks if chunk.get("text", "").strip()]
+
+
+def _build_bm25_from_chunks_jsonl(chunks_path: Path, k: int) -> Any:
+    """
+    Build BM25 retriever from chunks.jsonl if available, returning None otherwise.
+
+    This factory function implements the preferred BM25 initialization path that
+    uses the canonical chunks.jsonl as the source of truth. When chunks.jsonl
+    exists, this approach is more reliable than extracting documents from FAISS
+    docstore, as it avoids dependency on internal docstore implementation details.
+
+    Args:
+        chunks_path (Path): Path to the chunks.jsonl file.
+        k (int): Number of documents the BM25 retriever should return.
+
+    Returns:
+        BM25Retriever | None: Configured BM25 retriever if chunks.jsonl exists,
+            None if the file is missing or empty.
+    """
+    if not chunks_path.exists():
+        return None
+    
+    chunks = _load_chunks_jsonl(chunks_path)
+    if not chunks:
+        logger.warning("chunks.jsonl exists but contains no valid chunks")
+        return None
+    
+    corpus = _bm25_corpus_from_chunks(chunks)
+    if not corpus:
+        logger.warning("No text content found in chunks for BM25 corpus")
+        return None
+    
+    if BM25Retriever is None:  # pragma: no cover - defensive guard
+        logger.warning("BM25Retriever not available; install langchain_community to enable keyword retrieval.")
+        return None
+    
+    try:
+        bm25_retriever = BM25Retriever.from_texts(corpus)
+        bm25_retriever.k = k
+        logger.info("BM25 initialized from chunks.jsonl with %d texts (k=%d)", len(corpus), k)
+        return bm25_retriever
+    except Exception as exc:
+        logger.warning("Failed to build BM25 from chunks.jsonl: %s", exc)
+        return None
+
+
 def build_bm25_retriever_from_vectorstore(vectorstore: Any, keyword_k: int) -> Any:
     """
-    Build a BM25 retriever from the FAISS vectorstore's document store.
+    Build a BM25 retriever, preferring chunks.jsonl over FAISS docstore extraction.
 
-    This helper function extracts documents from the FAISS vectorstore's docstore to build
-    a keyword-based BM25 retriever. This is done early in M12 Step 1 to prepare for hybrid
-    retrieval (semantic + keyword) in Step 2, without changing the current retrieval behavior.
+    This function implements the M13 Step 3 enhancement: it first attempts to initialize
+    BM25 from the canonical chunks.jsonl file (preferred approach) and falls back to
+    extracting documents from the FAISS vectorstore's docstore only if chunks.jsonl
+    is not available. This decouples BM25 from FAISS internals for better reliability.
 
     Args:
         vectorstore: A FAISS vectorstore instance with a docstore attribute containing documents.
         keyword_k (int): The number of top documents the BM25 retriever should return.
 
     Returns:
-        BM25Retriever | None: A configured BM25 retriever if docstore is accessible,
-            or None if the docstore cannot be accessed or is empty.
+        BM25Retriever | None: A configured BM25 retriever from chunks.jsonl or docstore,
+            or None if neither source is accessible or contains valid data.
     """
     if BM25Retriever is None:  # pragma: no cover - defensive guard
         logger.warning("BM25Retriever not available; install langchain_community to enable keyword retrieval.")
         return None
 
+    # Step 1: Try to resolve chunks.jsonl path
+    chunks_jsonl_path = None
+    try:
+        # Prefer the configured FAISS index dir if present in CONFIG
+        faiss_index_dir = CONFIG.get("paths", {}).get("faiss_index_dir")
+        if faiss_index_dir:
+            chunks_jsonl_path = Path(faiss_index_dir) / "chunks.jsonl"
+        else:
+            # Default: compute relative to chain.py location
+            chunks_jsonl_path = Path(__file__).resolve().parents[1] / "faiss_index" / "chunks.jsonl"
+    except Exception:
+        # Fallback path
+        chunks_jsonl_path = Path(__file__).resolve().parents[1] / "faiss_index" / "chunks.jsonl"
+
+    # Step 2: Try BM25 from chunks.jsonl (preferred)
+    bm25_retriever = _build_bm25_from_chunks_jsonl(chunks_jsonl_path, keyword_k)
+    if bm25_retriever is not None:
+        return bm25_retriever
+
+    # Step 3: Fall back to docstore extraction (legacy)
+    logger.info("chunks.jsonl not found; falling back to docstore BM25")
+    
     try:
         # Try to access FAISS docstore to get the corpus
         if not hasattr(vectorstore, 'docstore') or vectorstore.docstore is None:
@@ -648,7 +782,7 @@ def build_bm25_retriever_from_vectorstore(vectorstore: Any, keyword_k: int) -> A
         bm25_retriever.k = keyword_k
 
         doc_count = len(documents)
-        logger.info("BM25 retriever initialized with %d documents (k=%d).", doc_count, keyword_k)
+        logger.info("BM25 initialized from docstore with %d documents (k=%d)", doc_count, keyword_k)
         return bm25_retriever
 
     except Exception as e:
