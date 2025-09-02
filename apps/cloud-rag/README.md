@@ -159,6 +159,144 @@ Notes:
   - `Top fused (doc_id, score): [...]`
   - If rerank is enabled: `Rerank enabled: top_n=...` and `Top reranked (doc_id, score): [...]`
 
+## Document Ingestion (M13)
+
+The cloud RAG service supports unified ingestion of multiple document types with incremental rebuilds and robust chunking. This section covers the complete M13 pipeline for processing PDFs, text files, and markdown.
+
+### Supported File Types
+
+Drop source files in `apps/cloud-rag/rag/data/seed/` (non-recursive scan):
+- **PDFs (`.pdf`)**: Preferred loader is `PyMuPDFLoader`, falls back to `PyPDFLoader` if unavailable
+- **Text files (`.txt`)**: Plain UTF-8 text files
+- **Markdown files (`.md`)**: Markdown content (processed as plain text)
+
+### Chunking Policy
+
+All file types use the same sentence-window chunking strategy for consistency:
+
+**Sentence-window chunking**:
+- Window size: 10 sentences per chunk
+- Overlap: 2 sentences between consecutive chunks
+- Sentence detection: Lightweight regex-based splitter (handles `.`, `!`, `?`)
+- Whitespace normalization: Collapses multiple spaces, trims ends
+- Stable chunk IDs: Format `doc_id#chunk_index` (e.g., `energy_guide#0`)
+
+**Per-type processing**:
+- **PDFs**: Process page-by-page, extract text content, preserve page numbers in metadata
+- **Text/Markdown**: Read entire file as single content block, process as one document
+
+### chunks.jsonl: The Portable Truth
+
+The ingestion pipeline produces a canonical `faiss_index/chunks.jsonl` file that serves as the single source of truth for all downstream processing:
+
+**Schema** (one JSON object per line):
+```json
+{
+  "id": "energy_guide#0",
+  "doc_id": "energy_guide",
+  "source_path": "/path/to/energy_guide.pdf",
+  "source_type": "pdf",
+  "page": 1,
+  "heading_path": [],
+  "text": "Normalized chunk text...",
+  "created_at": "2024-01-15T10:30:00Z",
+  "hash": "sha256_hex_digest"
+}
+```
+
+**Benefits of chunks.jsonl as portable truth**:
+- **Multi-source ready**: All file types (PDF, txt, md) produce the same schema
+- **Provider-agnostic**: No embeddings or model dependencies in the raw chunks
+- **Streaming friendly**: JSONL format enables efficient line-by-line processing
+- **Metadata rich**: Preserves source attribution, page numbers, timestamps, and content hashes
+- **Version control**: Can be committed for reproducibility
+- **Debuggable**: Easy to inspect chunks without parsing source files
+
+### Idempotency Rules
+
+The ingestion system tracks file changes via content hashes and splitter configuration:
+
+**Change detection**:
+- File hash: SHA-256 of file bytes
+- Config fingerprint: SHA-256 of sentence window parameters
+- Manifest: `faiss_index/manifest.json` tracks per-file metadata
+
+**Incremental rebuild logic**:
+1. **New files**: Detected by absence in manifest → process fully
+2. **Changed files**: Content hash differs → re-chunk and merge
+3. **Unchanged files**: Preserve existing chunks from `chunks.jsonl`
+4. **Deleted files**: Remove from manifest and `chunks.jsonl`
+5. **Config changes**: Force full rebuild (e.g., window size changed)
+
+**Manifest structure**:
+```json
+{
+  "schema_version": 1,
+  "config": {
+    "splitter": { "sent_window_size": 10, "sent_window_overlap": 2 },
+    "config_fingerprint": "sha256_hash"
+  },
+  "files": {
+    "rag/data/seed/energy_guide.pdf": {
+      "doc_id": "energy_guide",
+      "content_hash": "sha256_hash",
+      "chunks_count": 12,
+      "updated_at": "2024-01-15T10:30:00Z"
+    }
+  },
+  "faiss": {
+    "vectors_count": 120,
+    "embedding_dim": 1536,
+    "model_from_config": "text-embedding-3-small",
+    "built_at": "2024-01-15T10:30:05Z",
+    "config_fingerprint": "sha256_hash"
+  }
+}
+```
+
+### How to Force Rebuild
+
+To force a complete rebuild (delete all cached chunks and rebuild FAISS):
+
+```bash
+# From apps/cloud-rag directory
+rm -rf faiss_index/
+poetry run python -m scripts.seed_index
+```
+
+This removes:
+- `faiss_index/chunks.jsonl` (canonical chunks)
+- `faiss_index/manifest.json` (change tracking)
+- `faiss_index/index.faiss` (FAISS vectors)
+- All other FAISS metadata files
+
+### Usage Examples
+
+**Basic ingestion**:
+```bash
+# Add files to rag/data/seed/ then run
+poetry run python -m scripts.seed_index
+```
+
+**Monitor incremental rebuilds**:
+```bash
+# Logs show change analysis and processing counts
+# Look for: "Change analysis: X changed, Y unchanged, Z deleted"
+# And: "Incremental rebuild complete. Total chunks: N (preserved: P, new: Q)"
+```
+
+**Check ingestion results**:
+```bash
+# Count chunks
+wc -l faiss_index/chunks.jsonl
+
+# Inspect first few chunks
+head -3 faiss_index/chunks.jsonl | jq .
+
+# View manifest summary
+cat faiss_index/manifest.json | jq '.files | keys'
+```
+
 ## Project structure (cloud)
 ```
 api/            # FastAPI routers (health, rag, feedback)
