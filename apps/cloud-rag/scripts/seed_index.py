@@ -69,9 +69,163 @@ logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # M13 Step 1: Unified document ingestion → sentence-window chunking → chunks.jsonl export
+# M13 Step 2: Idempotency manifest and incremental rebuild
 # -----------------------------------------------------------------------------
 SENT_WINDOW_SIZE = 10  # 8–12 sentences per chunk
 SENT_WINDOW_OVERLAP = 2  # 2-sentence overlap
+
+
+# -----------------------------------------------------------------------------
+# M13 Step 2: Manifest and idempotency helpers
+# -----------------------------------------------------------------------------
+
+def _manifest_path(app_root: Path) -> Path:
+    """
+    Get the standard path for the idempotency manifest file.
+
+    The manifest tracks per-file metadata (content hashes, chunk counts, timestamps) and
+    splitter configuration to enable incremental rebuilds. Only files that have changed
+    content or when the splitter config changes need to be re-processed.
+
+    Args:
+        app_root (Path): The application root directory.
+
+    Returns:
+        Path: Absolute path to the manifest.json file.
+    """
+    return app_root / "faiss_index" / "manifest.json"
+
+
+def _chunks_jsonl_path(app_root: Path) -> Path:
+    """
+    Get the standard path for the canonical chunks JSONL file.
+
+    This file contains all processed chunks from all source file types, serving as the
+    single source of truth for downstream indexing (FAISS) and retrieval (BM25). The
+    incremental rebuild process preserves chunks from unchanged files and merges them
+    with newly generated chunks from changed files.
+
+    Args:
+        app_root (Path): The application root directory.
+
+    Returns:
+        Path: Absolute path to the chunks.jsonl file.
+    """
+    return app_root / "faiss_index" / "chunks.jsonl"
+
+
+def _compute_file_hash(path: Path) -> str:
+    """
+    Compute SHA-256 hash of file contents for change detection.
+
+    This hash is used to determine if a source file has been modified since the last
+    seeding run. Only files with different content hashes need to be re-processed,
+    enabling efficient incremental rebuilds of large document collections.
+
+    Args:
+        path (Path): File path to hash.
+
+    Returns:
+        str: Hexadecimal SHA-256 hash of the file contents.
+    """
+    try:
+        with path.open("rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except Exception as exc:
+        logger.warning("Failed to compute hash for %s: %s", path, exc)
+        return ""
+
+
+def _compute_config_fingerprint() -> str:
+    """
+    Compute configuration fingerprint for splitter settings to detect config changes.
+
+    When splitter configuration changes (sentence window size or overlap), all files
+    must be re-processed regardless of content hashes. This fingerprint captures the
+    current splitter config to enable detection of such changes across runs.
+
+    Returns:
+        str: SHA-256 hash of the current splitter configuration.
+    """
+    config_dict = {
+        "sent_window_size": SENT_WINDOW_SIZE,
+        "sent_window_overlap": SENT_WINDOW_OVERLAP,
+    }
+    config_str = json.dumps(config_dict, sort_keys=True)
+    return hashlib.sha256(config_str.encode("utf-8")).hexdigest()
+
+
+def _load_manifest(path: Path) -> Dict[str, Any]:
+    """
+    Load the idempotency manifest from disk, returning empty structure if missing.
+
+    The manifest tracks file-level metadata and splitter configuration to support
+    incremental rebuilds. If the manifest file doesn't exist or is malformed, this
+    function returns a clean empty structure, causing all files to be treated as
+    new and requiring full processing.
+
+    Args:
+        path (Path): Path to the manifest.json file.
+
+    Returns:
+        Dict[str, Any]: Manifest structure with schema_version, config, and files sections.
+    """
+    if not path.exists():
+        return {
+            "schema_version": 1,
+            "config": {
+                "splitter": {"sent_window_size": 0, "sent_window_overlap": 0},
+                "config_fingerprint": "",
+            },
+            "files": {},
+        }
+    
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            # Ensure required structure exists
+            if not isinstance(data.get("files"), dict):
+                data["files"] = {}
+            if not isinstance(data.get("config"), dict):
+                data["config"] = {
+                    "splitter": {"sent_window_size": 0, "sent_window_overlap": 0},
+                    "config_fingerprint": "",
+                }
+            return data
+    except Exception as exc:
+        logger.warning("Failed to load manifest from %s: %s", path, exc)
+        return {
+            "schema_version": 1,
+            "config": {
+                "splitter": {"sent_window_size": 0, "sent_window_overlap": 0},
+                "config_fingerprint": "",
+            },
+            "files": {},
+        }
+
+
+def _save_manifest(path: Path, manifest: Dict[str, Any]) -> None:
+    """
+    Save the updated idempotency manifest to disk with proper formatting.
+
+    The manifest is written atomically by creating the parent directory and serializing
+    with consistent formatting. This ensures the manifest remains valid even if the
+    process is interrupted during write operations.
+
+    Args:
+        path (Path): Path to the manifest.json file.
+        manifest (Dict[str, Any]): Complete manifest structure to persist.
+
+    Returns:
+        None: This function performs I/O and logs completion but returns no value.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2, ensure_ascii=False)
+        logger.info("Updated manifest: %s", path)
+    except Exception as exc:
+        logger.error("Failed to save manifest to %s: %s", path, exc)
 
 
 def _list_all_files(root: Path) -> List[Path]:
@@ -264,32 +418,176 @@ def _stable_doc_id_from_stem(stem: str) -> str:
     return s or "doc"
 
 
-def _build_unified_chunks(input_dir: Path) -> List[dict]:
+def _determine_change_set(
+    input_dir: Path, app_root: Path
+) -> Tuple[List[Path], List[Path], List[str]]:
     """
-    Unified document ingestion and chunking pipeline for all supported file types.
+    Analyze source files and manifest to determine what needs to be reprocessed.
 
-    This function implements the M13 Step 1 unified approach:
-    1. Discover all supported files (PDF, txt, md) in the input directory
-    2. Load each file into structured document records
-    3. Apply consistent sentence-window chunking to all document content
-    4. Build portable chunk dictionaries with stable IDs and metadata
-
-    The pipeline ensures all file types use the same chunking logic (sentence-window with
-    10 sentences per chunk, 2 sentences overlap) for consistency in downstream retrieval
-    and reranking performance.
+    This function implements the core incremental rebuild logic by comparing current
+    file hashes against the manifest and checking for splitter configuration changes.
+    It returns three sets: files that need reprocessing, files that can be preserved,
+    and files that have been deleted since the last run.
 
     Args:
-        input_dir (Path): The directory containing source files to ingest.
+        input_dir (Path): Directory containing source files to analyze.
+        app_root (Path): Application root directory for manifest access.
 
     Returns:
-        List[dict]: A list of chunk dictionaries ready for JSONL export and indexing.
+        Tuple[List[Path], List[Path], List[str]]: A tuple containing:
+            - changed_files: Files that need reprocessing (new, modified, or config changed)
+            - unchanged_files: Files that can be preserved from previous run
+            - deleted_files: File paths from manifest that no longer exist on disk
+    """
+    current_config_fp = _compute_config_fingerprint()
+    manifest = _load_manifest(_manifest_path(app_root))
+    
+    # If config changed, treat all files as changed
+    manifest_config_fp = manifest.get("config", {}).get("config_fingerprint", "")
+    config_changed = current_config_fp != manifest_config_fp
+    
+    if config_changed:
+        logger.info("Splitter config changed; forcing full rebuild")
+    
+    # Get current files and compute their hashes
+    current_files = _list_all_files(input_dir)
+    current_file_info = {}
+    
+    for file_path in current_files:
+        # Use relative path from app_root for consistent manifest keys
+        try:
+            rel_path = str(file_path.relative_to(app_root))
+        except ValueError:
+            # Fall back to absolute path if not under app_root
+            rel_path = str(file_path)
+        
+        content_hash = _compute_file_hash(file_path)
+        current_file_info[rel_path] = {
+            "path_obj": file_path,
+            "content_hash": content_hash,
+        }
+    
+    # Determine change sets
+    changed_files = []
+    unchanged_files = []
+    
+    manifest_files = manifest.get("files", {})
+    
+    for rel_path, info in current_file_info.items():
+        file_path = info["path_obj"]
+        content_hash = info["content_hash"]
+        
+        if config_changed:
+            # Config changed, all files need reprocessing
+            changed_files.append(file_path)
+        elif rel_path not in manifest_files:
+            # New file
+            changed_files.append(file_path)
+        elif manifest_files[rel_path].get("content_hash") != content_hash:
+            # File content changed
+            changed_files.append(file_path)
+        else:
+            # File unchanged
+            unchanged_files.append(file_path)
+    
+    # Find deleted files (in manifest but not on disk)
+    current_rel_paths = set(current_file_info.keys())
+    manifest_rel_paths = set(manifest_files.keys())
+    deleted_files = list(manifest_rel_paths - current_rel_paths)
+    
+    logger.info(
+        "Change analysis: %d changed, %d unchanged, %d deleted",
+        len(changed_files), len(unchanged_files), len(deleted_files)
+    )
+    
+    return changed_files, unchanged_files, deleted_files
+
+
+def _preserve_chunks_for_unchanged_files(
+    chunks_jsonl_path: Path, unchanged_files: List[Path], app_root: Path
+) -> List[dict]:
+    """
+    Stream existing chunks.jsonl and preserve chunks from unchanged files.
+
+    This function efficiently reads the existing chunks.jsonl line by line and collects
+    chunks whose source_path corresponds to files that haven't changed. This preserves
+    the investment in previous processing while allowing selective updates.
+
+    Args:
+        chunks_jsonl_path (Path): Path to the existing chunks.jsonl file.
+        unchanged_files (List[Path]): List of file paths that haven't changed.
+        app_root (Path): Application root directory for path normalization.
+
+    Returns:
+        List[dict]: Preserved chunk dictionaries from unchanged files.
+    """
+    if not chunks_jsonl_path.exists():
+        logger.info("No existing chunks.jsonl found; starting fresh")
+        return []
+    
+    # Create set of unchanged file paths (both relative and absolute) for fast lookup
+    unchanged_paths = set()
+    for file_path in unchanged_files:
+        unchanged_paths.add(str(file_path))  # Absolute path
+        try:
+            rel_path = str(file_path.relative_to(app_root))
+            unchanged_paths.add(rel_path)  # Relative path
+        except ValueError:
+            pass  # File not under app_root
+    
+    preserved_chunks = []
+    preserved_count = 0
+    
+    try:
+        with chunks_jsonl_path.open("r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    chunk = json.loads(line)
+                    source_path = chunk.get("source_path", "")
+                    
+                    if source_path in unchanged_paths:
+                        preserved_chunks.append(chunk)
+                        preserved_count += 1
+                    
+                except json.JSONDecodeError as exc:
+                    logger.warning("Invalid JSON at line %d: %s", line_num, exc)
+                    continue
+    
+    except Exception as exc:
+        logger.warning("Failed to read existing chunks.jsonl: %s", exc)
+        return []
+    
+    logger.info("Preserved %d chunks from %d unchanged files", preserved_count, len(unchanged_files))
+    return preserved_chunks
+
+
+def _build_unified_chunks_for_files(files: List[Path]) -> List[dict]:
+    """
+    Generate chunks for a specific set of files using the unified chunking pipeline.
+
+    This function applies the same sentence-window chunking logic as the full pipeline
+    but operates only on the specified file list. It's used for incremental processing
+    where only changed files need to be re-chunked.
+
+    Args:
+        files (List[Path]): List of file paths to process.
+
+    Returns:
+        List[dict]: Chunk dictionaries ready for JSONL export and indexing.
     """
     chunks_out: List[dict] = []
-    files = _list_all_files(input_dir)
     
-    logger.info("Discovered %d files for unified ingestion", len(files))
+    if not files:
+        logger.info("No files to process for chunking")
+        return chunks_out
     
-    # Step 1: Load all documents with unified metadata
+    logger.info("Processing %d changed files for chunking", len(files))
+    
+    # Load all documents from the specified files
     all_documents = []
     for file_path in files:
         records = _load_document_content(file_path)
@@ -297,8 +595,7 @@ def _build_unified_chunks(input_dir: Path) -> List[dict]:
     
     logger.info("Loaded %d document records from %d files", len(all_documents), len(files))
     
-    # Step 2: Apply consistent sentence-window chunking to all documents
-    total_chunks = 0
+    # Apply sentence-window chunking to all documents
     for doc_record in all_documents:
         content = doc_record["content"]
         if not content.strip():
@@ -333,12 +630,10 @@ def _build_unified_chunks(input_dir: Path) -> List[dict]:
                 "hash": h,
             })
             chunk_index += 1
-        
-        if chunk_index > 0:
-            total_chunks += chunk_index
     
-    logger.info("Generated %d chunks using unified sentence-window chunking", len(chunks_out))
+    logger.info("Generated %d new chunks from changed files", len(chunks_out))
     return chunks_out
+
 
 
 def _write_chunks_jsonl(out_path: Path, chunks: List[dict]) -> None:
@@ -427,7 +722,8 @@ def seed_index(
     logger.info("Starting unified FAISS seeding from %s", data_dir)
     
     # Step 1: Build chunks using unified pipeline
-    chunks = _build_unified_chunks(data_dir)
+    all_files = _list_all_files(data_dir)
+    chunks = _build_unified_chunks_for_files(all_files)
     if not chunks:
         logger.warning("No chunks generated from %s", data_dir)
         return
@@ -488,24 +784,27 @@ def seed_index(
 
 def main() -> None:
     """
-    Entry point for M13 Step 1: unified document ingestion and chunks.jsonl export.
+    Entry point for M13 Step 2: incremental document ingestion with idempotency manifest.
 
-    This command implements the streamlined pipeline:
-    1. Load documents from all supported file types (PDF, txt, md)
-    2. Apply consistent sentence-window chunking to all content
-    3. Write unified chunks.jsonl with stable IDs and provenance metadata
-    4. Log progress and summary statistics
+    This command implements the incremental pipeline:
+    1. Analyze files vs manifest to determine what changed (content or config)
+    2. Preserve chunks from unchanged files
+    3. Generate chunks only for changed files
+    4. Merge preserved + new chunks into updated chunks.jsonl
+    5. Update manifest with current file metadata and config fingerprint
 
-    The approach ensures all file types use the same chunking logic for downstream
-    consistency in retrieval and reranking performance.
+    The approach minimizes processing time on large document collections by only
+    re-chunking files that have actually changed since the last run.
 
     Returns:
-        None: Coordinates unified ingestion and logs progress and output location.
+        None: Coordinates incremental ingestion and logs progress and output location.
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     app_root = Path(__file__).resolve().parents[1]
     input_dir = (app_root / "rag" / "data" / "seed").resolve()
-    output_jsonl = (app_root / "faiss_index" / "chunks.jsonl").resolve()
+    
+    manifest_path = _manifest_path(app_root)
+    chunks_jsonl_path = _chunks_jsonl_path(app_root)
 
     if not input_dir.exists():
         logger.info("Seed directory %s does not exist. Creating it.", input_dir)
@@ -513,11 +812,115 @@ def main() -> None:
         logger.info("Place source files (.pdf, .txt, .md) under %s and rerun seeding.", input_dir)
         # Continue; will produce zero chunks.
 
-    # Unified pipeline: documents → chunks → jsonl
-    chunks = _build_unified_chunks(input_dir)
-    _write_chunks_jsonl(output_jsonl, chunks)
+    # Step 1: Determine what files have changed
+    changed_files, unchanged_files, deleted_files = _determine_change_set(input_dir, app_root)
     
-    logger.info("Unified ingestion complete. Total chunks: %d", len(chunks))
+    # Step 2: Preserve chunks for unchanged files
+    preserved_chunks = _preserve_chunks_for_unchanged_files(
+        chunks_jsonl_path, unchanged_files, app_root
+    )
+    
+    # Step 3: Generate chunks for changed files only
+    new_chunks = _build_unified_chunks_for_files(changed_files)
+    
+    # Step 4: Write updated chunks.jsonl
+    all_chunks = preserved_chunks + new_chunks
+    _write_chunks_jsonl(chunks_jsonl_path, all_chunks)
+    
+    # Step 5: Update manifest
+    _update_manifest(
+        manifest_path, app_root, input_dir, changed_files, unchanged_files, deleted_files, new_chunks
+    )
+    
+    logger.info(
+        "Incremental rebuild complete. Total chunks: %d (preserved: %d, new: %d)",
+        len(all_chunks), len(preserved_chunks), len(new_chunks)
+    )
+
+
+def _update_manifest(
+    manifest_path: Path, 
+    app_root: Path, 
+    input_dir: Path,
+    changed_files: List[Path], 
+    unchanged_files: List[Path], 
+    deleted_files: List[str],
+    new_chunks: List[dict]
+) -> None:
+    """
+    Update the idempotency manifest with current file metadata and configuration.
+
+    This function maintains the manifest.json file that tracks per-file content hashes,
+    chunk counts, and timestamps. It removes entries for deleted files, updates entries
+    for changed files, preserves entries for unchanged files, and updates the global
+    configuration fingerprint.
+
+    Args:
+        manifest_path (Path): Path to the manifest.json file.
+        app_root (Path): Application root directory for path normalization.
+        input_dir (Path): Directory containing source files.
+        changed_files (List[Path]): Files that were reprocessed in this run.
+        unchanged_files (List[Path]): Files that were preserved from previous run.
+        deleted_files (List[str]): Relative paths of files that no longer exist.
+        new_chunks (List[dict]): Newly generated chunks for counting per file.
+
+    Returns:
+        None: Updates manifest on disk and logs completion.
+    """
+    # Load existing manifest
+    manifest = _load_manifest(manifest_path)
+    
+    # Update config section
+    current_config_fp = _compute_config_fingerprint()
+    manifest["config"] = {
+        "splitter": {
+            "sent_window_size": SENT_WINDOW_SIZE,
+            "sent_window_overlap": SENT_WINDOW_OVERLAP,
+        },
+        "config_fingerprint": current_config_fp,
+    }
+    
+    # Remove deleted files from manifest
+    for deleted_rel_path in deleted_files:
+        if deleted_rel_path in manifest["files"]:
+            del manifest["files"][deleted_rel_path]
+            logger.info("Removed deleted file from manifest: %s", deleted_rel_path)
+    
+    # Count chunks per file from new_chunks
+    chunks_per_file = {}
+    for chunk in new_chunks:
+        source_path = chunk["source_path"]
+        chunks_per_file[source_path] = chunks_per_file.get(source_path, 0) + 1
+    
+    # Update manifest for changed files
+    now = datetime.now(timezone.utc).isoformat()
+    for file_path in changed_files:
+        try:
+            rel_path = str(file_path.relative_to(app_root))
+        except ValueError:
+            rel_path = str(file_path)
+        
+        doc_id = _stable_doc_id_from_stem(file_path.stem)
+        content_hash = _compute_file_hash(file_path)
+        chunk_count = chunks_per_file.get(str(file_path), 0)
+        
+        manifest["files"][rel_path] = {
+            "doc_id": doc_id,
+            "content_hash": content_hash,
+            "chunks_count": chunk_count,
+            "updated_at": now,
+        }
+    
+    # For unchanged files, preserve existing entries but don't modify timestamps
+    # (they're already in manifest["files"] and weren't deleted above)
+    
+    # Save updated manifest
+    _save_manifest(manifest_path, manifest)
+    
+    logger.info(
+        "Updated manifest: %d changed files, %d preserved, %d deleted",
+        len(changed_files), len(unchanged_files), len(deleted_files)
+    )
 
 
 if __name__ == "__main__":
