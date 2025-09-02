@@ -636,6 +636,56 @@ def _build_unified_chunks_for_files(files: List[Path]) -> List[dict]:
 
 
 
+def _load_chunks_jsonl(path: Path) -> List[dict]:
+    """
+    Stream read chunks from the canonical chunks.jsonl file with validation.
+
+    This helper loads the complete set of processed chunks from the JSONL export,
+    performing minimal validation to ensure each chunk has the required fields for
+    downstream processing (FAISS indexing, BM25 initialization). Invalid entries
+    are logged and skipped to maintain robustness.
+
+    Args:
+        path (Path): Path to the chunks.jsonl file.
+
+    Returns:
+        List[dict]: List of validated chunk dictionaries ready for indexing.
+    """
+    chunks = []
+    
+    if not path.exists():
+        logger.warning("chunks.jsonl not found at %s", path)
+        return chunks
+    
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    chunk = json.loads(line)
+                    
+                    # Validate minimal required fields
+                    required_fields = ["id", "text", "source_path", "source_type"]
+                    if all(field in chunk for field in required_fields):
+                        chunks.append(chunk)
+                    else:
+                        logger.warning("Chunk at line %d missing required fields", line_num)
+                
+                except json.JSONDecodeError as exc:
+                    logger.warning("Invalid JSON at line %d: %s", line_num, exc)
+                    continue
+    
+    except Exception as exc:
+        logger.error("Failed to read chunks.jsonl from %s: %s", path, exc)
+        return []
+    
+    logger.info("Loaded %d chunks from %s", len(chunks), path)
+    return chunks
+
+
 def _write_chunks_jsonl(out_path: Path, chunks: List[dict]) -> None:
     """
     Write chunk records to a JSON Lines file that downstream jobs can stream efficiently.
@@ -660,6 +710,147 @@ def _write_chunks_jsonl(out_path: Path, chunks: List[dict]) -> None:
             f.write(json.dumps(obj, ensure_ascii=False))
             f.write("\n")
     logger.info("Wrote %d chunks to %s", len(chunks), out_path)
+
+
+def _should_rebuild_faiss(app_root: Path, changed_files: List[Path]) -> bool:
+    """
+    Determine whether FAISS index needs to be rebuilt based on file changes and config.
+
+    This function implements the rebuild gating logic to avoid unnecessary FAISS
+    reconstruction when nothing has changed. It checks for missing index files,
+    file content changes, and splitter configuration changes to decide whether
+    the current FAISS index is still valid.
+
+    Args:
+        app_root (Path): Application root directory for path resolution.
+        changed_files (List[Path]): Files that have changed since last run.
+
+    Returns:
+        bool: True if FAISS should be rebuilt, False if current index is valid.
+    """
+    faiss_dir = app_root / "faiss_index"
+    
+    # Check if FAISS index directory or index.faiss file is missing
+    if not faiss_dir.exists() or not (faiss_dir / "index.faiss").exists():
+        logger.info("FAISS index missing; rebuild required")
+        return True
+    
+    # If any files changed, rebuild is needed
+    if changed_files:
+        logger.info("Files changed; FAISS rebuild required")
+        return True
+    
+    # Check if splitter config changed since last FAISS build
+    manifest = _load_manifest(_manifest_path(app_root))
+    current_config_fp = _compute_config_fingerprint()
+    faiss_config_fp = manifest.get("faiss", {}).get("config_fingerprint", "")
+    
+    if current_config_fp != faiss_config_fp:
+        logger.info("Splitter config changed; FAISS rebuild required")
+        return True
+    
+    logger.info("FAISS index up-to-date; no rebuild needed")
+    return False
+
+
+def _build_faiss_from_chunks_jsonl(app_root: Path) -> Dict[str, Any]:
+    """
+    Build FAISS index directly from chunks.jsonl without re-parsing source files.
+
+    This function implements the core M13 Step 3 functionality: loading chunks from
+    the canonical JSONL export, converting them to LangChain Documents, building
+    FAISS embeddings, and persisting the index. This approach decouples FAISS
+    building from source file parsing, enabling efficient incremental rebuilds.
+
+    Args:
+        app_root (Path): Application root directory for file path resolution.
+
+    Returns:
+        Dict[str, Any]: Summary metadata about the built FAISS index for manifest storage.
+    """
+    # Load chunks from canonical JSONL
+    chunks_jsonl_path = _chunks_jsonl_path(app_root)
+    chunks = _load_chunks_jsonl(chunks_jsonl_path)
+    
+    if not chunks:
+        raise RuntimeError(f"No chunks found in {chunks_jsonl_path}; cannot build FAISS index")
+    
+    # Get embeddings from CONFIG
+    try:
+        from config import CONFIG  # local import to avoid circulars at module import
+    except Exception:  # pragma: no cover - defensive
+        CONFIG = {}
+    embeddings = get_embeddings(CONFIG)
+    logger.info("Using embeddings provider from CONFIG")
+    
+    # Determine embedding dimension
+    try:
+        dim = len(embeddings.embed_query("probe"))
+    except Exception:
+        # Fallback probe text
+        dim = len(embeddings.embed_query("test"))
+    
+    # Convert chunks to LangChain Documents
+    docs = list(_build_documents_from_chunks(chunks, source_prefix=""))
+    logger.info("Converted %d chunks to Documents for FAISS", len(docs))
+    
+    # Build FAISS index
+    try:
+        from langchain_community.vectorstores import FAISS  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "Missing FAISS integration. Install it via: pip install langchain-community faiss-cpu"
+        ) from exc
+    
+    vectorstore = FAISS.from_documents(docs, embeddings)
+    
+    # Save FAISS index
+    faiss_dir = app_root / "faiss_index"
+    faiss_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        vectorstore.save_local(str(faiss_dir), allow_dangerous_serialization=True)
+    except TypeError:
+        vectorstore.save_local(str(faiss_dir))
+    
+    logger.info("Built and saved FAISS index to %s", faiss_dir)
+    
+    # Get model name from CONFIG for manifest
+    model_name = ""
+    try:
+        model_name = (CONFIG.get("embeddings", {}) or {}).get("name", "")
+    except Exception:
+        pass
+    
+    # Return summary for manifest
+    return {
+        "vectors_count": len(docs),
+        "embedding_dim": dim,
+        "model_from_config": model_name,
+        "built_at": datetime.now(timezone.utc).isoformat(),
+        "config_fingerprint": _compute_config_fingerprint(),
+    }
+
+
+def _bm25_corpus_from_chunks(chunks: List[dict]) -> List[str]:
+    """
+    Extract plain text corpus from chunks for future BM25 retriever initialization.
+
+    This helper prepares the text corpus that will be used by the retrieval chain
+    to initialize BM25 directly from chunks.jsonl (not from FAISS docstore). This
+    decouples lexical indexing from vector indexing, enabling more flexible
+    retrieval pipeline configurations.
+
+    Note: This function prepares the corpus but does not import or initialize BM25.
+    The chain will use this pattern to initialize BM25Retriever from chunks.jsonl
+    in a later step, avoiding dependency on FAISS docstore structure.
+
+    Args:
+        chunks (List[dict]): Chunk dictionaries from chunks.jsonl.
+
+    Returns:
+        List[str]: Plain text list suitable for BM25Retriever.from_texts().
+    """
+    return [chunk.get("text", "") for chunk in chunks if chunk.get("text", "").strip()]
 
 
 def _build_documents_from_chunks(chunks: List[dict], source_prefix: str = ""):
@@ -827,9 +1018,19 @@ def main() -> None:
     all_chunks = preserved_chunks + new_chunks
     _write_chunks_jsonl(chunks_jsonl_path, all_chunks)
     
-    # Step 5: Update manifest
+    # Step 5: Determine if FAISS rebuild is needed
+    rebuild_faiss = _should_rebuild_faiss(app_root, changed_files)
+    faiss_metadata = None
+    
+    if rebuild_faiss:
+        faiss_metadata = _build_faiss_from_chunks_jsonl(app_root)
+        logger.info("FAISS index rebuilt successfully")
+    else:
+        logger.info("FAISS unchanged; skipping rebuild")
+    
+    # Step 6: Update manifest
     _update_manifest(
-        manifest_path, app_root, input_dir, changed_files, unchanged_files, deleted_files, new_chunks
+        manifest_path, app_root, input_dir, changed_files, unchanged_files, deleted_files, new_chunks, faiss_metadata
     )
     
     logger.info(
@@ -845,7 +1046,8 @@ def _update_manifest(
     changed_files: List[Path], 
     unchanged_files: List[Path], 
     deleted_files: List[str],
-    new_chunks: List[dict]
+    new_chunks: List[dict],
+    faiss_metadata: Dict[str, Any] = None
 ) -> None:
     """
     Update the idempotency manifest with current file metadata and configuration.
@@ -863,6 +1065,7 @@ def _update_manifest(
         unchanged_files (List[Path]): Files that were preserved from previous run.
         deleted_files (List[str]): Relative paths of files that no longer exist.
         new_chunks (List[dict]): Newly generated chunks for counting per file.
+        faiss_metadata (Dict[str, Any], optional): FAISS index metadata to store.
 
     Returns:
         None: Updates manifest on disk and logs completion.
@@ -913,6 +1116,11 @@ def _update_manifest(
     
     # For unchanged files, preserve existing entries but don't modify timestamps
     # (they're already in manifest["files"] and weren't deleted above)
+    
+    # Update FAISS metadata if provided
+    if faiss_metadata:
+        manifest["faiss"] = faiss_metadata
+        logger.info("Updated FAISS metadata in manifest")
     
     # Save updated manifest
     _save_manifest(manifest_path, manifest)
