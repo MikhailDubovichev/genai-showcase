@@ -24,7 +24,7 @@ Beyond the core agentic logic, this project includes all the functionality requi
 
 A non-comprehensive list of the showcased capabilities is detailed below.
 
-P.S. To showcase my technical capabilities in **data analysis / classical machine learning (ML)** I also pushed to my GitHub **Metallurgy-Flotation-Plant-Optimization/** repo, with model predicting silica content in iron ore concentrate. I built this model in Google Colab in 2024 as part of my ML self-stydies, using Kaggle dataset and one A100 GPU.
+P.S. To showcase my technical capabilities in **data analysis / classical machine learning (ML)** I also pushed to my GitHub **Metallurgy-Flotation-Plant-Optimization/** repo, with model predicting silica content in iron ore concentrate. I built this model in Google Colab in 2024 as part of my ML self-studies, using Kaggle dataset and one A100 GPU.
 
 ---
 
