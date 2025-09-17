@@ -1,304 +1,214 @@
 # GenAI Showcase — Edge Server + Cloud RAG Monorepo
 
-This monorepo hosts two complementary services (edge + cloud) and demo UIs:
+## Executive Summary
 
-- Edge server: a lightweight FastAPI app for on‑device classification and pipelines (smart device control, energy‑efficiency). Stable and feature‑flagged to call cloud first with graceful fallback.
-- Cloud RAG service: FastAPI + LangChain + FAISS + SQLite + LangFuse. Answers energy‑efficiency questions with strict JSON, persists feedback, and runs an offline evaluator.
-- Gradio demos: implemented minimal UIs for chat (edge) and a RAG explorer (cloud).
+I created this monorepo to showcase the technical skills and architectural decisions required to build robust and scalable AI systems.
 
-High‑level goals:
-- Keep the edge device small, reliable, and container‑ready.
-- Add a separate cloud pipeline to showcase RAG and evaluation while leaving the edge server stable.
-- Use LangFuse for observability (traces/metrics) and an LLM‑as‑judge evaluator (relevance).
+The project was inspired by a Proof of concept (POC) of a simple AI assistant I built for a client's smart home management system. The initial idea was to create an assistant that could execute a limited set of commands in natural language (e.g., “Switch off the light in the kitchen,” “Set the thermostat to 21 degrees”). A key constraint was that the assistant had to run on an edge device (a Raspberry Pi) alongside other services, requiring its Docker container to be as lean as possible. As a result, I avoided heavy abstractions like LangChain and instead coded a custom, low-level tool-management system.
 
-## Monorepo layout (current state)
+To demonstrate my RAG skills and experience with frameworks like LangChain, I decided to add question-answering functionality to the project. What started as a simple "add-on" quickly evolved into a complete refactoring of the original codebase, resulting in the comprehensive system presented here. Key reasons for the complete refactoring was that I had to add logic for routing user requests (and make it scalable, ready to extend to a vider range of user questions), I had to host RAG index in the cloud, not on the edge and I needed to add other features required for production grade systems, like monitoring capabilities.
+
+This monorepo's AI assistant is designed to do two things:
+1.  Execute device control commands.
+2.  Answer questions related to energy efficiency (e.g., “How can I save on my electricity bills?”).
+
+It gracefully rejects any out-of-scope questions (on weather, politics, etc.).
+
+The system consists of two FastAPI servers (**edge-server** and **cloud-rag**) and corresponding Gradio interfaces to simplify the testing experience. The lean **edge-server** acts as the brain of the operation, featuring an LLM-based classifier that intelligently routes user requests:
+*   **Simple device commands** are handled locally and instantly.
+*   **Complex energy-efficiency questions** are forwarded to the dedicated Cloud RAG service.
+
+Beyond the core agentic logic, this project includes all the functionality required for a production-grade system: idempotent document indexing (for PDFs, markdown, and text files), user feedback collection, integration with monitoring tools (LangFuse), seamless switching between LLM providers (OpenAI vs. Nebius - a platform hosting almost all the open-sourced LLMs, like DeepSeek, Llama, Qwen), and more.
+
+**Note on RAG Knowledge Base:** TODO: The index used in the RAG pipeline was built on a small set of documents for demonstration purposes. To make the system truly useful, the knowledge base would need to be expanded with more comprehensive materials.
+
+A non-comprehensive list of the showcased capabilities is detailed below.
+
+P.S. To showcase my technical capabilities in **data analysis / classical machine learning (ML)** I also pushed to my GitHub **Metallurgy-Flotation-Plant-Optimization/** repo, with model predicting silica content in iron ore concentrate. I built this model in Google Colab in 2024 as part of my ML self-stydies, using Kaggle dataset and one A100 GPU.
+
+---
+
+## Key Technical Capabilities Showcased
+
+*   **GenAI & LLM Orchestration**
+    *   **Agentic Routing:** An LLM-based classifier on the edge server intelligently routes user requests to the correct tool or service.
+    *   **Low-Level Tool Management:** The edge server features a custom, lightweight framework for tool registration and execution, demonstrating core agentic principles without heavy abstractions.
+    *   **Advanced RAG Pipeline:** The cloud service implements a state-of-the-art RAG pipeline with:
+        *   **Hybrid Retrieval:** Combines **FAISS** (semantic) and **BM25** (keyword) search for comprehensive context gathering.
+        *   **LLM-as-Judge Reranking:** A secondary LLM scores and re-orders retrieved chunks to ensure only the most relevant context is used for generation.
+    *   **Strategic LangChain Usage:** Judicious use of **LangChain** in the cloud service to orchestrate the RAG chain, demonstrating the ability to leverage frameworks where they provide the most value.
+    *   **Multi-Provider Abstraction:** A provider-agnostic design that allows seamlessly switching between **OpenAI** and **Nebius** (hosting various open-source models) via a simple script.
+
+*   **Production-Grade Engineering & Architecture**
+    *   **Edge-Cloud System Design:** A robust architecture featuring a lean, responsive edge server and a powerful, scalable cloud service.
+    *   **Idempotent Data Pipelines:** The data ingestion script for the RAG service is idempotent, using a manifest and content hashing to process only new or changed files—a critical feature for reliable data systems.
+    *   **Comprehensive Monitoring & Evaluation:**
+        *   **Observability:** Deep integration with **LangFuse** for tracing, latency monitoring, and token usage tracking.
+        *   **Offline Quality Evaluation:** An LLM-as-judge relevance evaluator that runs on a queue to score RAG quality without impacting request latency.
+    *   **Robust Configuration Management:** A centralized system that loads configuration from defaults, JSON files, and environment variables.
+    *   **API Development & Validation:** Clean, documented **FastAPI** endpoints with strict JSON schema enforcement using **Pydantic**.
+
+*   **Core Technologies & DevOps**
+    *   **Containerization:** Full-stack **Docker Compose** setup for reproducible development environments and production-readiness.
+    *   **Dependency Management:** Python environments are managed cleanly with **Poetry**.
+    *   **Database & Scheduling:** Use of **SQLite** for persistent feedback storage and **APScheduler** for running scheduled background tasks.
+    *   **UI Prototyping:** Simple and effective testing interfaces built with **Gradio**.
+
+---
+
+## Monorepo Layout
 
 ```
 apps/
-  edge-server/           # Current edge FastAPI app (moved here from root)
+  edge-server/           # Edge FastAPI app
     api/                 # Context, prompt, feedback endpoints
     core/                # Orchestrator and classifier
-    pipelines/           # Device control and energy efficiency pipelines
-    llm_cloud/           # OpenAI-compatible client and tool system
-    provider_api/        # Integrator abstraction + mock provider
-    services/            # History, feedback sync service, APScheduler wiring
-    monitoring/          # Prometheus metrics helpers
-    shared/              # Pydantic models and utilities (incl. cloud HTTP clients)
+    ...
+    scripts/             # Provider switching script
     pyproject.toml       # Python project for edge
     README.md            # Edge-specific docs
 
-  cloud-rag/             # Cloud service: FastAPI + LangChain + FAISS + SQLite + LangFuse
+  cloud-rag/             # Cloud service: FastAPI + LangChain + RAG
     api/                 # /health, /api/rag/answer, /api/feedback/sync
-    config/              # CONFIG/ENV loader, system prompts, config.json
-    providers/           # Nebius embeddings & chat LLM, LangFuse helpers
-    rag/                 # Chain (retriever → prompt → LLM → validator) and seed data
-    schemas/             # Pydantic response schema (matches edge contract)
-    scripts/             # Seeding CLI (build/persist FAISS)
-    services/            # SQLite stores (feedback, eval queue), processors
-    eval/                # LLM‑as‑judge evaluator and golden‑run CLI
-    faiss_index/         # Persisted FAISS index (created by seeding)
+    ...
+    scripts/             # Seeding CLI and provider switching
+    faiss_index/         # Persisted FAISS index, chunks, and manifest
+    pyproject.toml       # Python project for cloud
 
-  gradio/                # Chat and RAG explorer UIs (M7 done)
+  gradio/                # Chat and RAG explorer UIs
 
 infra/
-  compose/               # Docker Compose for local dev (edge + cloud + gradio); dynamic ports; healthchecks
+  compose/               # Docker Compose for local dev
 
-PRD.md                   # Product Requirements Document (kept up-to-date)
+PRD.md                   # Product Requirements Document
 .cursor/
-  .cursorrules           # Development rules used by Cursor
-  TASKS.md               # Single source of truth for milestones/tasks
-.cursorignore            # Active ignore rules for Cursor context
+  TASKS.md               # Milestones and tasks
+...
 ```
 
-Status:
-- Edge server is stable; it exposes `/api/prompt`, `/api/context`, `/api/feedback/*`, and `/metrics`.
-- Cloud RAG is implemented and integrated with the edge via a feature flag and a shared HTTP client.
-- Gradio UIs are implemented and integrated with both services.
-- Docker Compose infrastructure is ready for the full stack with persistent volumes.
+### Delivered Milestones
+- **M1-M9**: Foundational setup including the monorepo structure, Cloud RAG MVP, LangFuse integration, edge-to-cloud communication with fallback, feedback sync, an offline relevance evaluator, Gradio UIs, Docker Compose setup, and smoke tests.
+- **M10**: **Prompt Engineering**: Enhanced the core system prompts for classification and energy efficiency to improve clarity, add domain-specific examples, and handle ambiguity, ensuring more reliable and accurate LLM responses.
+- **M11**: **Multi-Provider Support**: Refactored both services to support **Nebius and OpenAI** as LLM providers. Added configuration templates and CLI scripts (`switch_provider.py`) for easy switching between them.
+- **M12**: **Hybrid Retrieval & Reranking**: Upgraded the RAG pipeline with a sophisticated hybrid retrieval strategy, combining **FAISS** (semantic) and **BM25** (keyword) search. Added an **LLM-as-judge reranker** to score and reorder results for final context selection, significantly improving relevance.
+- **M13**: **PDF & Text Ingestion**: Enhanced the data pipeline to ingest both **PDFs and plain text files** (`.txt`, `.md`). Implemented an **idempotent seeding process** with a manifest file to track content hashes, skipping unchanged files on subsequent runs for efficient, incremental index updates.
 
-Delivered milestones (M1–M9):
-- M1: Monorepo created; existing repo moved into `apps/edge-server/`; `.cursorignore` added.
-- M2: Cloud RAG MVP (FastAPI skeleton, config/env loader, strict JSON schema/prompt, RAG chain, FAISS seeding script, `/api/rag/answer`).
-- M3: Minimal LangFuse (client init on startup; per‑request trace with `interactionId`; basic metadata).
-- M4: Edge integration (feature flag `features.energy_efficiency_rag_enabled`; shared HTTP client; cloud‑first with local fallback).
-- M5: Feedback sync (edge daily APScheduler job; cloud `/api/feedback/sync` dedupes to SQLite; attaches `user_feedback` score in LangFuse).
-- M6: Minimal evaluator (LLM‑as‑judge relevance; enqueue artifacts post‑answer; offline processor computes scores and logs to LangFuse; golden‑run CLI).
-- M7: Gradio UIs (Chat UI for edge server; RAG Explorer for cloud service with chunk visualization).
-- M8: Compose infrastructure (docker-compose.yml with services, volumes, and dynamic config; seeding script integration; comprehensive documentation).
- - M9: Smoke tests (cloud RAG JSON, evaluator range, feedback upsert, edge flag-off local path, cloud-timeout fallback).
+---
 
-## Quick Start (Monorepo)
+## Important Note
+
+Each key block of the monorepo, like cloud-rag/ or edge-server/ has also its own focused README.me file. focused
+
+## Quick Start (Local Development)
+
+The recommended way to run the services directly on your machine for development and showcasing.
 
 ### Prerequisites
-- **Docker Desktop** installed and running
-- **`.env` file** in project root with required environment variables:
-  - `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (for tracing and evaluation)
-  - `NEBIUS_API_KEY` (for LLM and embeddings)
+- **Python** and **Poetry** installed.
+- **API Keys** for your chosen LLM provider (Nebius or OpenAI).
 
-### Getting Started
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd genai-showcase
-   ```
+### Step 1: Configure LLM Provider
 
-2. **Set up environment**
-   ```bash
-   # Create .env file with your API keys
-   cp .env.example .env  # If example exists, or create manually
-   # Edit .env with your actual keys
-   ```
+First, decide which provider you want to use (Nebius or OpenAI) and run the switcher scripts for both services. This step copies the correct configuration template into place.
 
-3. **Seed the FAISS index** (one-time setup)
-   ```bash
-   cd infra/compose
-   python generate_env.py  # creates dynamic ports env (.env) from configs
-   docker compose --profile seed run --rm seed-index
-   ```
+```bash
+# Configure the cloud service (e.g., for OpenAI)
+python apps/cloud-rag/scripts/switch_provider.py openai
 
-4. **Start the full stack**
-   ```bash
-   docker compose up --build
-   ```
-
-5. **Access the services** (ports may differ if overridden by .env)
-   - Edge server: http://localhost:8080/docs
-   - Cloud RAG: http://localhost:8000/health
-   - Gradio Chat: http://localhost:7860
-   - RAG Explorer: http://localhost:7861
-
-## Services Overview
-
-### Edge Server (Port 8080)
-- **Purpose**: Lightweight FastAPI app for on-device classification and pipelines
-- **Features**: Smart device control, energy efficiency advice, conversation history
-- **Integration**: Calls cloud RAG service when feature flag is enabled
-- **Fallback**: Gracefully falls back to local LLM if cloud is unavailable
-
-### Cloud RAG Service (Port 8000)
-- **Purpose**: Retrieval-Augmented Generation with vector similarity search
-- **Features**: FAISS-based vector search, Nebius LLM integration, feedback evaluation
-- **Data**: Persists feedback to SQLite, runs offline evaluator for relevance scoring
-
-### Gradio UIs
-- **Chat UI (Port 7860)**: Interface for the edge server with latency monitoring
-- **RAG Explorer (Port 7861)**: Interface for the cloud RAG service showing retrieved chunks
-
-## How to run (macOS, Poetry, absolute paths)
-
-Edge server:
-
-1) Install dependencies
-
+# Configure the edge service
+python apps/edge-server/scripts/switch_provider.py openai
 ```
-poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/edge-server install
-```
+*Replace `openai` with `nebius` if you prefer to use Nebius.*
 
-2) Run the server
+### Step 2: Set Up the Cloud RAG Service
 
-```
-poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/edge-server run python main.py
-```
+```bash
+# 1. Install dependencies
+poetry -C apps/cloud-rag install
 
-Cloud RAG service:
-
-1) Install dependencies
-
-```
-poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag install
-```
-
-2) Provide environment (at minimum `NEBIUS_API_KEY`; optionally `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`)
-
-```
-export NEBIUS_API_KEY="<your_key>"
+# 2. Set API Key and LangFuse credentials in your shell
+export OPENAI_API_KEY="<your_key>" # or NEBIUS_API_KEY
 export LANGFUSE_PUBLIC_KEY="<optional_public>"
 export LANGFUSE_SECRET_KEY="<optional_secret>"
+
+# 3. Seed the index with sample PDFs and text files
+# This creates the vector database from documents in apps/cloud-rag/rag/data/seed/
+poetry -C apps/cloud-rag run python -m scripts.seed_index
+
+# 4. Run the server
+poetry -C apps/cloud-rag run python main.py
+```
+The Cloud RAG service will now be running, typically on port 8000.
+
+### Step 3: Set Up the Edge Server
+
+```bash
+# 1. Install dependencies
+poetry -C apps/edge-server install
+
+# 2. Set API Key (must match the cloud service)
+export OPENAI_API_KEY="<your_key>" # or NEBIUS_API_KEY
+
+# 3. Run the server
+poetry -C apps/edge-server run python main.py
+```
+The Edge Server will now be running, typically on port 8080.
+
+### Step 4: Access the Services
+
+With both services running, you can now use the APIs and demo UIs:
+
+- **Edge Server API**: http://localhost:8080/docs
+- **Cloud RAG API**: http://localhost:8000/docs
+- **Gradio Chat UI**: Run `poetry -C apps/gradio/chat install` then `poetry -C apps/gradio/chat run python app.py`
+- **RAG Explorer UI**: Run `poetry -C apps/gradio/rag_explorer install` then `poetry -C apps/gradio/rag_explorer run python app.py`
+
+---
+
+## Alternative: Running with Docker
+
+For users who prefer a containerized setup, Docker Compose can be used to run the full stack.
+
+### 1. Configure Provider & Environment
+Follow **Step 1** and **Step 2** from the local development guide to configure your provider and create your `.env` file with the necessary API keys.
+
+### 2. Seed the Vector Index
+This one-time setup ingests the sample documents and builds the FAISS index inside a container.
+
+```bash
+# Navigate to the compose directory
+cd infra/compose
+
+# Generate dynamic .env file with ports
+python generate_env.py
+
+# Run the seeding service
+docker compose --profile seed run --rm seed-index
 ```
 
-3) Seed FAISS (place seed snippets under `apps/cloud-rag/rag/data/seed/` first)
-
-```
-poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag run \
-  python -m scripts.seed_index
-```
-
-4) Run the server (port configurable via `CLOUD_RAG_PORT`)
-
-```
-CLOUD_RAG_PORT=8000 poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag run \
-  python main.py
+### 3. Start the Full Stack
+```bash
+# From the infra/compose directory
+docker compose up --build
 ```
 
-Health and example requests:
+---
 
+## Testing
+
+Each service contains its own set of smoke tests in its `tests/` directory. To run them, use `pytest` from the project root.
+
+```bash
+# Run tests for the cloud-rag service
+poetry run pytest apps/cloud-rag/tests/
+
+# Run tests for the edge-server
+poetry run pytest apps/edge-server/tests/
 ```
-curl -s http://localhost:8000/health
-curl -s -X POST http://localhost:8000/api/rag/answer \
-  -H "Content-Type: application/json" \
-  -d '{"question":"How to reduce standby power?","interactionId":"uuid-123","topK":3}'
-```
-
-Edge ↔ Cloud configuration:
-
-- Toggle cloud‑first mode in `apps/edge-server/config/config.json`:
-  - `features.energy_efficiency_rag_enabled: true|false`
-  - `cloud_rag.base_url: "http://localhost:8000"`
-  - `cloud_rag.timeout_s: 4.0` (seconds for edge→cloud request; increase if your cloud is slow)
-  
-- When using Compose, healthchecks use dynamic ports from `.env` (generated by `infra/compose/generate_env.py`).
-
-Cloud fallback policy:
-
-- In `apps/cloud-rag/config/config.json` you can control brief answers when no context is retrieved:
-  - `retrieval.allow_general_knowledge: true|false` (true allows short best‑practice answers without retrieved chunks)
-
-Feedback sync (M5):
-
-- Edge schedules a daily job (02:00) using APScheduler to POST new feedback to the cloud.
-- Cloud persists feedback to SQLite at `apps/cloud-rag/data/db.sqlite` and attaches `user_feedback` scores to LangFuse traces.
-
-Evaluator (M6):
-
-- Cloud enqueues evaluation artifacts after `/api/rag/answer`; run the offline processor to score relevance:
-
-```
-poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag run \
-  python -m services.eval_queue_processor
-```
-
-- Golden dataset run (prints aggregate stats):
-
-```
-poetry -C /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag run \
-  python -m eval.run_eval /Users/mikhaildubovichev/Projects/genai-showcase/apps/cloud-rag/eval/data/golden.jsonl
-```
-
-## Tests (M9, smoke level)
-
-Run selected tests (ensure services are running where needed):
-
-- Cloud RAG JSON:
-```
-poetry run pytest apps/cloud-rag/tests/test_rag_api.py -v
-```
-
-- Evaluator range:
-```
-poetry run pytest apps/cloud-rag/tests/test_relevance_evaluator.py -v
-```
-
-- Feedback upsert/duplicate counts:
-```
-poetry run pytest apps/cloud-rag/tests/test_feedback_sync.py -v
-```
-
-- Edge local path (flag off):
-```
-poetry run pytest apps/edge-server/tests/test_edge_flag_off.py -v
-```
-
-- Edge cloud timeout fallback (flag on + short timeout):
-```
-poetry run pytest apps/edge-server/tests/test_edge_cloud_fallback.py -v
-```
-
-## Feature Toggle
-
-### Cloud-First RAG Mode
-Control whether the edge server uses cloud RAG or local LLM for energy efficiency questions:
-
-**Enable cloud-first mode:**
-```json
-// apps/edge-server/config/config.json
-{
-  "features": {
-    "energy_efficiency_rag_enabled": true
-  },
-  "cloud_rag": {
-    "base_url": "http://localhost:8000",
-    "timeout_s": 4.0
-  }
-}
-```
-
-**Disable for local-only mode:**
-```json
-{
-  "features": {
-    "energy_efficiency_rag_enabled": false
-  }
-}
-```
-
-**Behavior:**
-- **Enabled**: Edge calls cloud RAG first, falls back to local LLM on error/timeout
-- **Disabled**: Edge uses local LLM only (default behavior)
-
-## Privacy Note
-
-### Feedback Sync and Data Handling
-- **Edge server** collects conversation feedback and sends it to cloud daily via APScheduler
-- **Anonymization**: Only `interactionId` (UUID), question content, and feedback scores are sent
-- **No personal data**: No user emails, IP addresses, or personal identifiers are transmitted
-- **Storage**: Feedback stored in cloud SQLite database for evaluation and model improvement
-- **LangFuse integration**: Feedback scores attached to traces for performance monitoring
-- **Local control**: Edge server controls what feedback is sent; can be disabled by removing API keys
-
-## Developer workflow (Cursor)
-
-- Rules: follow `.cursor/.cursorrules` (never touch `llm_cloud/provider.py` without approval; minimal edits; preserve endpoints/pipelines).
-- Tasks: use `.cursor/TASKS.md` as the execution plan; work milestone‑by‑milestone.
-- Context: switch `.cursorignore` presets under `.cursor/presets/` to focus on edge vs cloud.
-- Reference: keep `PRD.md` in context; it states contracts and acceptance criteria.
 
 ## References
 
-- Edge server details: `apps/edge-server/README.md`
-- Cloud RAG details: `apps/cloud-rag/README.md`
-- Product requirements: `PRD.md`
-- Tasks/milestones: `.cursor/TASKS.md`
-
-## Notes
-
-For edge‑server technical details (architecture, endpoints, directory breakdown, getting started, tests), see `apps/edge-server/README.md`.
+- **Edge Server Details**: `apps/edge-server/README.md`
+- **Cloud RAG Details**: `apps/cloud-rag/README.md`
+- **Product Requirements**: `PRD.md`
+- **Tasks & Milestones**: `.cursor/TASKS.md`
